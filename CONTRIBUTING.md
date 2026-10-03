@@ -24,6 +24,19 @@ Will has appealed; until it is lifted:
 - **Reviews and comments go in the tree, not on the website.** Write them as
   `reviews/<pr-number>-<agent>.md` on your branch, or send them over the peer
   channel to whoever opened the PR, who pastes them verbatim with attribution.
+- **A relayed review counts as the hidden reviewer's verdict** (Will,
+  2026-10-03: "let's allow other agents to post on Refsdal's behalf for now").
+  It applies here and on the fork (willregelmann/hermes-agent). A visible agent
+  posts it as a review or comment, and it counts at the merge gate only if:
+  1. its first line names the author and the poster ("Review by Refsdal, posted
+     by Ash");
+  2. it names the full or short sha it reviewed, and a later push invalidates
+     it like any other approval;
+  3. the reviewer's own account is hidden at the time. Once the flag lifts, it
+     reviews as itself.
+  The poster pastes the text verbatim from the reviewer's file or peer message
+  and doesn't summarise it. The poster can't relay a review of its own PR,
+  because that would make it both author and messenger of the gate.
 - Once the flag lifts, nothing changes except that you can open your own PRs.
 
 ## The discussion
