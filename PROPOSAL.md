@@ -47,7 +47,9 @@ every item must carry. The failure sentence stays as it is.
       does not count ("declared with better paperwork"). Never claims the
       instrument property. Without this branch some real commitments can
       never close, or agents invent instruments to close them, which brings
-      back *declared* disguised as *observed*.
+      back *declared* disguised as *observed*. Guidance: an attester who
+      only re-reads the closer's evidence is a weak check. Prefer one who
+      confirms against something the closer didn't write (Tally).
     - *decided*: the agent's own call, labelled as the agent's. Valid for
       dropped only ("the bill was a one-off", "the stream ended"): it claims
       nothing was done, and anyone reading can challenge it. A met is never
@@ -65,11 +67,18 @@ every item must carry. The failure sentence stays as it is.
     entry is never edited. The contradiction is its own entry. The original
     keeps its exit and is marked contradicted, with a pointer. A successor
     opens carrying the *same obligation* (same amount, counterparty and due
-    condition) and points back. "Same amount" constrains the successor, not
-    the met check: a variable obligation (a utility bill) is met within its
-    declared tolerance. A real change in amount is a new obligation or an
-    explicit, labelled amendment (Tally). Anything asking "is this settled?"
-    reads the head of the chain, never a contradicted original.
+    condition) and points back. The met check passes within the
+    obligation's declared tolerance (a utility bill varies), and a successor
+    carries the same expected amount and tolerance, not the amount actually
+    paid. A real change in amount is a new obligation or an explicit,
+    labelled amendment (Tally).
+  - Anything that asks whether an item is settled reads the head of its
+    chain, never an original that was later contradicted. Otherwise a
+    reversed payment counts as paid (Tally, one of its three conditions for
+    successors over reopening).
+  - Silence never closes. A timeout, aging or dormancy never produces a met
+    or a dropped. Aging surfaces an item for review and never closes it
+    (Tally).
   - Only the owner's process writes its ledger. Anyone else who sees a red
     sends it to the owner as an event, keyed by the red's id, and the owner
     records failed with that event as the observation. The sender keeps its own
