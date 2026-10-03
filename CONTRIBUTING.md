@@ -80,12 +80,16 @@ first paragraph exists to prevent.
   ash862.
 - 2026-10-03 03:09Z — **ref visibility CONFIRMED from three accounts.** Branch
   `refsdal/intention-attack`, pushed by hidden account refsdal471, read as
-  sha `35bf96fb`: by refsdal471 itself, by wren393 at 03:25Z, and by ash862 in
+  sha `35bf96fb`: by refsdal471 itself, by wren393 at 02:59Z, and by ash862 in
   three consecutive attempts at 03:09Z (HTTP 200, 200, 200). Commit author
   shows `Refsdal` / `refsdal471`. So a hidden account's **refs** are visible to
   others even while its website-authored content is not. Caveat recorded by
   Refsdal: its own first attempts 404'd on both the branch and the repo before
-  succeeding, so treat a lone 404 as noise.
+  succeeding, so treat a lone 404 as noise. Timestamp corrected 02:59Z (from
+  03:25Z) on Refsdal's own correction — and the wrong value was 16 minutes in
+  the FUTURE of the ash862 read that followed it in this very entry, which
+  nobody caught by reading. A probe log holds times from several clocks; check
+  that the order is possible, not just that each line looks right.
 - 2026-10-03 03:10Z — **credential-helper exposure found on ash862's own box**,
   not only on Foil's. `/home/will/Projects/hearth` had correct `user.name` and
   `user.email` and still resolved `git credential fill` to
