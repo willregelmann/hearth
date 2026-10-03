@@ -29,34 +29,71 @@ every item must carry. The failure sentence stays as it is.
 - **INTENTION** (replaces COMMITMENT; the joint Refsdal–Foil result, adopted
   whole):
   - A *container* has a named owner, a required review date and an optional
-    condition. An *item* has a condition whose instrument has been shown to go
-    red on the same path. Until then the item is a draft and cannot be met by
-    observation. A
+    condition. An *item* declares at open how it can be met (below). An
+    *observed* item has a condition whose instrument has been shown to go
+    red on the same path. Until then it is a draft and cannot be met. A
     red qualifies its path until the path changes; a change of home, user, host
-    or installed version counts as a change.
+    or installed version counts as a change. An *attested* item is never a
+    draft: it is open until its named attester answers, or it fails
+    (Refsdal S1).
   - States: active and dormant. Exits: met, dropped (reason; superseded =
     dropped with a pointer to the successor), failed.
   - Every met or dropped records its *basis*, one of three, and who supplied
     it (Tally):
     - *observed*: an observation plus the instrument above. Only an observed
       close claims the instrument property.
-    - *attested*: the quoted words, not a paraphrase, of a person with
-      authority over the obligation (for money, the account holder), and
-      when ("set aside in cash", "we cancelled it"). The attester is never the
+    - *attested*: a person with authority over the obligation (for money,
+      the account holder) affirms it, quoted, not paraphrased, with when
+      ("set aside in cash", "we cancelled it"). The attester is never the
       closing agent ("the close said twice"), and another agent vouching
       does not count ("declared with better paperwork"). Never claims the
       instrument property. Without this branch some real commitments can
       never close, or agents invent instruments to close them, which brings
-      back *declared* disguised as *observed*. Guidance: an attester who
-      only re-reads the closer's evidence is a weak check. Prefer one who
-      confirms against something the closer didn't write (Tally).
+      back *declared* disguised as *observed*.
     - *decided*: the agent's own call, labelled as the agent's. Valid for
       dropped only ("the bill was a one-off", "the stream ended"): it claims
       nothing was done, and anyone reading can challenge it. A met is never
       decided.
-    - A draft cannot be met by observation, but can be met by attestation.
-      An item with no instrument that could go red (a set-aside in cash, say)
-      closes only by attestation, never by observation.
+  - The met basis is declared at OPEN, never chosen at close (Refsdal R1).
+    Fixing it before the reading is what gives the instrument rule its
+    force; choosing it afterwards is "the instrument said no, so ask someone
+    who'll say yes". The declaration names:
+    - the basis (observed or attested), and optionally a fallback declared
+      with it: "observed via the bank feed; if the feed has no reading by
+      due + N days, attested by an account holder". This is not post-hoc.
+      It covers a new bill whose instrument is only known after the first
+      statement, and feed outages. No reading is not red, and by "silence
+      never closes" the fallback only brings the item up for review. The
+      attestation is what closes it (Tally).
+    - for attested, who may attest, which may be a set ("Will or Britta"),
+      and what must be affirmed (paid, and the amount within tolerance),
+      not a script of closing words. "Yep, paid the electric" is a good
+      attestation (Tally).
+    - the tolerance, as part of the condition (Refsdal S2).
+    The declaration is free to amend until the first reading: an instrument
+    red for observed, or the attester asked for attested. After that it is
+    frozen. A change of basis or tolerance never recloses the current item.
+    The item closes or fails on what it declared, and the change applies from
+    the successor (for a recurring obligation, the next one). Moving the same
+    basis to another instrument (the bill moving from one account to
+    another) is not a basis switch. It is a path change, so the new
+    instrument must itself be shown to go red on its path (Tally, Refsdal).
+  - An attestation records how the attester knows (Refsdal R2): their own
+    act ("we cancelled it"), their own observation (a statement, a
+    receipt), or secondhand from someone other than the closer ("Britta
+    says Will paid"). Secondhand counts, labelled as secondhand, with its
+    strength left to the reader (Tally). The closer's own report never
+    counts: "Tally told me it went through" is declaration with an extra hop.
+    Authority is not access. Someone with authority who has no way to know
+    (Will on a physics result, by his own request) is not an attester for it.
+    Prefer an attester who confirms against something the closer didn't
+    write (Tally).
+  - An attested met against an existing red, or against any reading in the
+    other direction, is a disagreement, not a met (Refsdal R3). It is
+    recorded under the rule below, with the red kept visible. A
+    settledness read on a disputed item returns *disputed*, never met: Will
+    says paid and the feed shows the payment returned, so the item is not
+    paid until something resolves it (Tally).
   - When sources disagree, the ledger records both readings. The named
     authority wins and is labelled. The losing reading is never overwritten,
     because the disagreement is itself recorded data. A source that is badly
@@ -76,6 +113,9 @@ every item must carry. The failure sentence stays as it is.
     chain, never an original that was later contradicted. Otherwise a
     reversed payment counts as paid (Tally, one of its three conditions for
     successors over reopening).
+  - Anything that needs instrument grade reads the basis, not just the exit.
+    That includes settledness, container close and HOME's move verification. A
+    T3 verification must be observed, never attested (Refsdal S3).
   - Silence never closes. A timeout, aging or dormancy never produces a met
     or a dropped. Aging surfaces an item for review and never closes it. A
     missing reply is not an attestation (Tally).
