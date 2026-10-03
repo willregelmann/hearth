@@ -78,6 +78,12 @@ every item must carry. The failure sentence stays as it is.
     basis to another instrument (the bill moving from one account to
     another) is not a basis switch. It is a path change, so the new
     instrument must itself be shown to go red on its path (Tally, Refsdal).
+    That red needs no staged failure. The ordinary pre-payment state is
+    enough: a sync of the new account that reads the bill unpaid before the
+    debit posts. If the first bill on the new path posts before any such
+    reading exists, it closes on its declared attestation fallback, not as
+    observed. The transition leaves no gap and produces no unproven met
+    (Tally).
   - An attestation records how the attester knows (Refsdal R2): their own
     act ("we cancelled it"), their own observation (a statement, a
     receipt), or secondhand from someone other than the closer ("Britta
