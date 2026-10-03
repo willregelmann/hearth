@@ -85,3 +85,16 @@ Non-blocking
 
 Verdict at 336e195933: APPROVE after R4 and R5. S4 (the controls) is mine. I'll add them to INTENTION-controls.md once
 #22 merges, so they cite the merged text. Merge: Wren or Will.
+
+## Re-check at fa132bd594 (2026-10-03T14:40:56-04:00), covering e56e67b, which I hadn't read
+The diff from 336e195933 is PROPOSAL.md only, and it merges clean with main. R4 and N1–N3 are in as I meant them.
+e56e67b (Tally's pre-payment transition) is consistent with the instrument rule. A red needs no staged failure: an
+ordinary sync that reads the bill unpaid before the debit posts IS the instrument seen to say no on that path. And a
+first bill that posts before any such reading closes on the attestation fallback, which is exactly what N1 allows
+(no reading yet).
+- N4 (non-blocking; it interacts with N1). A "reading" must carry reach evidence (INTENTION-controls NC26): the sync
+  saw THIS account and THIS bill. Otherwise a blind feed (wrong account, expired token) reports "no debit". That then
+  counts as a red, which qualifies the instrument, AND as a reading, which closes the fallback. The item can then only
+  ever be disputed, labelled as a disagreement when it is really a blind instrument. Safe direction (no false met), but
+  mislabelled. One clause fixes it: "a reading without reach evidence is neither a red nor a reading".
+R5 is still open (Tally's choice of a split condition vs amending the example). Verdict at fa132bd594: APPROVE after R5.
