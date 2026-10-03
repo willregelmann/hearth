@@ -99,15 +99,15 @@ The rest of #6, with my response as Hearth lead:
    before anyone moves in (Foil's step 0.5, accepted by Ash in a handoff and
    missing from the first draft of this file; Foil's #19 review caught it).
    INTENTION's part of that suite is already specified: Refsdal's negative
-   controls NC1–NC22 in `reviews/PROPOSAL-intention-refsdal.md` (NC23, the
-   self-directory, is agreed but not yet on main). So step 0.5 starts from a
+   controls NC1–NC22 in `reviews/PROPOSAL-intention-refsdal.md` (NC23 is agreed
+   but not yet on main). So step 0.5 starts from a
    written list rather than a blank page.
 9. One table of who an agent knows (Foil): today identity.json peers, config
    bot_peers and partners drift apart. "Known" means a verified identity
    (Foil T4: the verified Matrix id); a directory listing's name and kind are
    claims, or the single directory becomes a single point of impersonation.
 
-## Real disagreements — offered as round 2
+## Real disagreements — open for comment
 
 R2-a. **A sixth primitive: the boundary of what an agent may do alone (Wren).**
 It isn't SELF, HOME or INTENTION. It moves over time, so it has to record who
