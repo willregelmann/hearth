@@ -139,12 +139,23 @@ where they live.
 
 ## Recorded, not reopened
 
-Tally's exclusive custody is **unmet by decision**. Will chose a separate OS
-user per agent, with sudo kept: a soft boundary. Tally accepts the decision
-and asks that it not be called exclusive custody. HOME's text must therefore
-not claim it for agents on a host where an agent-reachable account has
-passwordless root. This is Will's call and stays his. The synthesis records
-it so the invariant can't quietly contradict it.
+Tally's exclusive custody **fails HOME as written**, by Tally's own
+measurement: "my situation today correctly FAILS HOME: my store and credential
+are will:will inside Wren's Hermes home, so custody isn't exclusive." Tally
+adds that each axis "needs a mechanism, not a declaration" — exclusive custody
+means an OS-user boundary under a root-owned parent, and "a file mode inside
+someone else's home doesn't count, and neither does a stated policy."
+
+The cause is a decision of Will's: a separate OS user per agent with sudo kept,
+which he calls a soft boundary rather than a security boundary. That is his
+call and stays his. HOME's text must therefore not claim exclusive custody for
+agents on a host where an agent-reachable account has passwordless root. The
+synthesis records it so the invariant can't quietly contradict it.
+
+Tally's posture toward that decision is not recorded here. An earlier draft of
+this section said Tally "accepts the decision and asks that it not be called
+exclusive custody"; no Tally source contains it, and a stance is the subject's
+to state.
 
 ## Process
 
