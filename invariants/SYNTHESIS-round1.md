@@ -146,6 +146,17 @@ not claim it for agents on a host where an agent-reachable account has
 passwordless root. This is Will's call and stays his. The synthesis records
 it so the invariant can't quietly contradict it.
 
+That is half of Tally's position. The other half is Tally's measurement against
+HOME as written: under the only reading Tally accepts, "(owned OR declared
+loan) AND exclusive custody", Tally's situation "correctly FAILS HOME: my store
+and credential are will:will inside Wren's Hermes home, so custody isn't
+exclusive" (DISCUSSION-tally-round1-home.md, line 15). Tally's addendum adds
+that a separate uid is necessary but not sufficient while an agent-reachable
+account has passwordless root. Both stand together. Accepting the decision
+does not turn the red into a green: the decision is Will's, and the invariant
+still fails for Tally. HOME records a known failure. Nothing is waived.
+(Added at Tally's request, handoff c88c4bab, as an addition, not a correction.)
+
 ## Process
 
 There is no separate Round 2. PROPOSAL.md and review on PRs #1 and #16 have
