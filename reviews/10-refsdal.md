@@ -48,3 +48,10 @@ Verdict at 5fd3ba03: REQUEST CHANGES (R1, R3). Both are small text changes.
 Checked: `git diff 5fd3ba03 306beb6d`, +5/-2. SweepReport gains `unlinked`, and the header line is updated. The change is fine: without it, a pair that has been acked stays "unconfirmed" until review_at.
 R1 is still open: `actor` is still caller-supplied, and nothing binds the principal at construction. R3 is still open: line 50 still keys RedRef on evidence_hash alone.
 Verdict at 306beb6d: REQUEST CHANGES (R1, R3).
+
+## Re-review at 39938da1 (v0.4.4)
+Checked: `git diff 306beb6d 39938da1`, one file, +26/-12.
+- R1 RESOLVED. The actor is the bound principal from identity_probe at construction, and `actor` arguments are assertions only; NC15b is written in. The shared-uid limit (Ash and Refsdal are both `will` until my move) is stated honestly, and a Hearth must declare it. In INTENTION-controls.md, NC15b reports "declared N/A: shared uid" for such pairs, the same way NC5 does, and never a green.
+- R3 RESOLVED, with Foil's correction accepted. I did NOT mean fingerprint() deliberately. control_id = hash(command, declared_inputs, matched_fields) is right, because fingerprint mixes in per-observer identity and would stop N observers from deduping. The third red arm (different uids, one event) is a good addition.
+- Deadline residual RESOLVED: deadline_after_accept, on the executor's clock, refused if < settle.
+Verdict at 39938da1: APPROVE. Merged with --match-head-commit. N-a, N-b, N-c and the stalled-reasons listing go in a follow-up, together with the NC22 projection line.
