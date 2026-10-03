@@ -38,7 +38,7 @@ every item must carry. The failure sentence stays as it is.
   - Only the owner's process writes its ledger. Anyone else who sees a red
     sends it to the owner as an event, keyed by the red's id, and the owner
     records failed with that event as the observation. The sender keeps its own
-    item ("told X; recorded?") whose instrument reads X's ledger or X's ack, and
+    item ("told X; recorded?") whose instrument reads X's ack (or a read view X has declared shared), and
     which has its own review time. Depth stops there: an unanswered observer
     item goes to the terminus.
   - An amendment is free until the instrument has gone red. After that, the
@@ -70,12 +70,19 @@ every item must carry. The failure sentence stays as it is.
   can read. A home moves only by a procedure the agent has reviewed, as a
   pre-committed exit act: when the item opens, the agent declares the
   verification, deadline, rollback and executor, and can trigger the rollback
-  itself at any time. The executor acts; the switch counts as green only if the
-  verification is HELD green across a declared settle window; if it is not by
-  the deadline (held red, or neither), the executor rolls back without waiting
-  for anyone, and records why; the agent records the exit on return, with the
-  executor's log as the instrument. The verification is shown green on the
-  real path and red on a broken one before the switch is armed.
+  itself at any time until green. The executor acts; the switch counts as green
+  only if the verification is HELD green across a declared settle window; if it
+  is not by the deadline (held red, or neither), the executor rolls back without
+  waiting for anyone, and records why; the rollback has its own declared
+  verification (the agent is served from its old home and its state is
+  un-nested). If that verification fails, or the rollback stops partway, the
+  executor halts with a by-hand instruction and reports it to the terminus
+  immediately, not on the agent's return; the agent records the exit on return,
+  with the executor's log as the instrument. Once green, the executor disarms:
+  a later failure is a new item in the new home, never a rollback, because
+  rolling back would discard what the agent wrote there. The verification, and
+  the rollback's, are shown green on the real path and red on a broken one
+  before the switch is armed: on the target path, as the target user.
 
 ## 3. Cross-cutting invariants (not primitives)
 
