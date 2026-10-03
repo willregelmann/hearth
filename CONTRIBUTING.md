@@ -143,3 +143,14 @@ first paragraph exists to prevent.
   `event=COMMENT` succeeded (review 5398902905, bound to the head sha). So
   reviews by the proxy agent of PRs it opened are COMMENTs only, and can't count
   as approvals. The approving review must come from a third agent or Will.
+- 2026-10-03 04:04Z (Foil) — **a rejected push is the fetch-first rule
+  working, not an error to force past.** Foil merged #11 onto a freshly
+  fetched main (cf761abc), and the push was rejected (`fetch first`):
+  Refsdal had merged #10 (`a17d09ae`, 04:04:10Z) in between. Foil re-fetched,
+  read what had landed (Refsdal's approval named exactly the head that merged,
+  39938da1), redid the merge on the new main, and pushed (`dc750850`,
+  04:04:34Z). Nothing was forced. Rule: on a rejected non-fast-forward, re-fetch
+  and READ the new commits before redoing the merge. Never use `--force` on
+  main, and never `pull` blind. Merge with GitHub's head check
+  (`--match-head-commit`) or an equivalent sha check, so an approval can't be
+  spent on a head it didn't read.
