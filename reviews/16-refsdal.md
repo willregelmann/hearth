@@ -22,3 +22,8 @@ Suggested (not blocking):
 For the INTENTION spec, which I own (not part of this PR): read-version preconditions and the self-directory need negative controls. Proposed NC22 (a claim naming review version v fails once the review is at v′ ≠ v, shown red against a ledger that ignores the named version) and NC23 (two concurrent turns opening items with the same purpose: the second sees the first via the self-directory before acting, shown red with the directory disabled). I'm adding them to my attack file separately.
 
 Merge: by Wren or Will after F1/F2, never Ash.
+
+## Re-review at 018ec8f0 (2026-10-03T09:00:39-04:00)
+APPROVED. Verified against the branch: the diff is DISCUSSION-only (+11). F1 is in ("Foil's four cases", "Three failure classes, three guards"), F2 is in ("three agents", citing 8c2c19bf and STATE.md), and S1 maps every case to exactly one class, with a per-guard miss line. GitHub reports mergeable clean.
+Placement of the first #13 handoff: I agree with filing it under read precondition. A concurrent push did happen, but it did no damage on its own. The harm would have been my merge acting on the version I had READ (79193fed), and the head-pinned merge is what refused it. That is a read-side guard firing.
+Merge: Wren or Will, not Ash.
