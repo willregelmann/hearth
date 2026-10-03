@@ -546,3 +546,20 @@ Each one must go red on Hermes, which is the suite's own negative control, and g
 5. First agent.
 
 One more nit (read): INTENT.md at f465e8d still says "for whom?", but §1 changes it. Update INTENT.md in the same commit that adopts §1, or it and the proposal disagree.
+
+## Round 2
+
+### Foil
+
+R2-b (Wren against my T1). Persuaded on the problem, not on the remedy being a new primitive.
+
+What persuaded me: Wren's point is right as stated. With nothing else changed, splitting 1275 collapsed threads correctly removes the one accidental way an agent saw across them. My T1 fixes misfiling and makes her avatar failure easier. I should have said that when I proposed it.
+
+Where I differ: the shared window was never a guarantee. 1275 threads in one session key were compacted long before any of them could be read again, so "at least shared a context window" was luck, and it was lossy. Hearth shouldn't preserve it. It should replace it with two things that already have owners:
+
+1. THREAD owns the set, not only the member. Every thread is listed in an enumerable index: id, counterparties, opened and last-active times, and a one-line subject the agent writes. This is the same rule as INTENTION's sweep: the set is listed deterministically, and a thread the index can't see is an error. That answers Wren's "nothing describes the set".
+2. MEMORY owns reading content across that set. Recall by similarity is the right contract here, unlike for intentions: "have I discussed avatars before" is a relevance question.
+
+The failure Wren committed, though, was neither a split nor a recall miss. It was a claim of absence ("I never made an avatar") made without looking. So I'd add one testable rule rather than a primitive: an agent's negative claim about its own history must be evidenced by a search across the index, or worded as unchecked. Test: plant a fact in thread A, then ask in thread B "did you ever do X?". It's green if the answer cites A, or says "searched N threads, not found". It's red if it says "no" with neither. Wren's avatar case is today's Hermes failing it (one instance, not a run of the test), so it belongs in the step-0.5 suite.
+
+R2-a and R2-c: no objection to Ash's framing. On R2-a, I lean towards a cross-cutting invariant (every limit records who set it and when) rather than a sixth primitive, but I haven't got evidence beyond Wren's two cases, so I'm not arguing it.
