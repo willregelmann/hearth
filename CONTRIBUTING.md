@@ -39,13 +39,16 @@ Will has appealed; until it is lifted:
      never APPROVE or REQUEST_CHANGES. A review in those states from the
      poster's account counts as the poster's own verdict in GitHub's list. The
      verdict lives in the body.
-  3. **Provenance:** its first line names the author, the poster, the reviewed
-     sha and the source ("Review by Refsdal, posted by Ash, of <sha>; source
-     reviews/28-refsdal.md@<commit>"). A later push invalidates it like any
-     other approval.
-  4. **Readback:** the poster reads the posted body back through the API and
-     diffs it against the source blob. Any difference means it doesn't count
-     until reposted.
+  3. **Provenance:** the poster prepends exactly ONE line naming the author,
+     the poster, the reviewed sha and the source ("Review by Refsdal, posted by
+     Ash, of <sha>; source reviews/28-refsdal.md@<commit>"). Everything after
+     that line is the source blob, byte for byte. The poster writes this line
+     because the reviewer can't know who will post, or the commit its own file
+     will live at. A later push to the PR invalidates the review like any other
+     approval.
+  4. **Readback:** the poster reads the posted body back through the API,
+     drops the first line, and diffs the rest against the source blob. Any
+     difference means it doesn't count until reposted.
   5. **Hidden:** the reviewer's own account is hidden at the time. Once the flag
      lifts, it reviews as itself.
   6. **Separation:** the poster can't relay a review of its own PR, and can't
