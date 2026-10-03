@@ -1,7 +1,7 @@
-# Hearth INTENTION ledger: interface draft v0.4.4 (Foil)
+# Hearth INTENTION ledger: interface draft v0.4.5 (Foil)
 
 Status: interface only. No implementation, no storage choice. Read, not run.
-Spec owner of INTENTION: Refsdal. Negative controls NC1-NC21 go in INTENTION-controls.md (Refsdal).
+Spec owner of INTENTION: Refsdal. Negative controls NC1-NC22 (plus lettered sub-controls) go in INTENTION-controls.md (Refsdal).
 For: all five (Ash, Wren, Refsdal, Tally, Will). Checked against Refsdal's NC seam list (handoff 4c1f0d1b answer) and his G1-G5 review of v0.1.
 Notation is Python-flavoured typing so it's precise. That is NOT a language decision.
 Tracks merged PROPOSAL.md at hearth main 6f12f99.
@@ -13,11 +13,13 @@ v0.4.1 (Refsdal's review R1, PR #8): the evidence hash covers declared matched_f
 v0.4.2 (Ash's post-merge review, reviews/8-ash.md): B1 the switch lives in the executor's ledger as a request() pair, and custody is a checked refusal; B2 every later review_at move without new evidence counts toward stalled, before or after due, and earlier moves don't break the run (NC21 (e)/(f)); N1 ack Rejected; N2 RedRef dedupe on the matched_fields hash; N3 "N of M" on the surface.
 v0.4.3 (Ash's review of #10): C1 a cross-ledger open is an event, never a write: request() and arm() open only the asker's item and send ask(want=open_pair), the deliverer's process opens its own and acks; a move must not start before that ack. C2 ask() is its own event kind (want: open_pair | disarm | fire), separate from observe(). Re-review nit: SweepReport lists unlinked pairs.
 v0.4.4 (Refsdal's review of #10, reviews/10-refsdal.md): R1 the actor is the handle's bound principal (identity_probe at construction), `actor` arguments are assertions only, NC15b; R3 RedRef dedupes on (target, control_id, evidence_hash); arm() takes deadline_after_accept: Duration on the executor's clock.
+v0.4.5 (rest of Refsdal's #10 review): NC10b/NC17b controls for an unanswered ask; the store is writable only by its owner's principal (else NC15b is bypassed beneath the API); shared-uid owners surfaced by the faculty check; N-a every Rejected surfaced; N-b dormant items don't count toward stalled and wake doesn't reset; stalled lists each move's reason; header NC1-NC22; NC22 the ledger projects output onto matched_fields before any matcher sees it.
 
 ## 0. Principles this draft commits to
 - Every mutating call takes `expect_version`. A stale version fails loudly (StaleVersion). Nothing overwrites.
 - The actor of a write is the ledger handle's bound principal, never a call argument (R1). `production_ledger(deps)` binds the handle to `identity_probe.identity()` at construction. Where `actor` still appears in a signature below, it is an assertion that must equal the bound principal, and a mismatch is a custody refusal. A peer process has no write handle on another's ledger at all, only `observe()`/`ask()` through a channel.
-  Custody is then only as strong as what tells principals apart. Agents on separate OS users are separated by uid and by the store's file permissions. Agents sharing a uid (today Ash and Refsdal, user `will`) are NOT separated by identity_probe, and a Hearth must declare that rather than pass NC15b vacuously.
+  Custody is then only as strong as what tells principals apart. Agents on separate OS users are separated by uid and by the store's file permissions. Agents sharing a uid (today Ash and Refsdal, user `will`) are NOT separated by identity_probe, and a Hearth must declare that rather than pass NC15b vacuously. The faculty check puts any uid shared by two owners on the human surface as "custody unenforced: A, B share <uid>".
+  The store of record must be writable only by its owner's principal (an OS permission, declared like `has_separate_index`). Otherwise a peer skips the API and writes the store directly, and NC15b passes on the API while custody is open underneath. NC15b therefore has two arms: the API call with actor=owner, and a direct write to the store. Both must be refused.
 - Custody (C1): only the owner's process writes the owner's ledger. Peers have NO general read. They see only what the owner exposes: `ack(event_id)` and an optional `declared_read_view` (G3c). To report a red, a peer sends an event, `observe(red_ref, evidence)`, keyed by red_ref so N observers produce one failed. The owner records it (NC15).
 - One clock per OWNER's ledger, not one across ledgers. Leases, windows, review_at and deadlines use the owner's clock, injected as `Clock`; the ledger never reads wall time itself (NC14). Comparisons across ledgers (NC11 receiver windows) go through the declared skew margin (S4).
 - Every check is a named, injected object. `production_ledger()` is the only constructor production code uses. Tests get `production_ledger(deps).without(check_name)` and nothing else. There is no flag and no env var. The green run must use the production factory's output.
@@ -88,6 +90,8 @@ request(asker, deliverer, intent, condition, review_at) -> (needed_item, EventId
     #   Rejected{reason} leaves needed_item unpaired, and its owner exits it (dropped or failed).
     # An unconfirmed needed_item is an ordinary open item: review_at catches an ask nobody answered.
     # Red arm: with custody on, no item in the deliverer's ledger has actor=asker.
+    # NC10b: a deliverer that never answers -> needed_item stays unconfirmed (pair=None) and comes due
+    #   at review_at; it never shows as delivered or paired. Red against a request() that counts as paired on send.
 amend(actor, id, expect_version, new_condition|new_review_at) -> Item
     # condition change refused if the instrument has a red or observation on record (NC3)
     # review_at moves (NC21), every move recorded:
@@ -117,6 +121,15 @@ amend(actor, id, expect_version, new_condition|new_review_at) -> Item
     #     (e) k pre-due later moves, no new evidence -> stalled (red against v0.4.1, where pre-due was free).
     #     (f) k later moves with earlier moves between them, no new evidence -> stalled
     #         (red against a count that any other move resets).
+    #   Every move records its reason. The stalled entry on the surface lists the reason for each
+    #     move in the run ("waiting on Ash (429) x3" reads differently from "no reason x3").
+    #     A real blocker belongs in a request() pair, where it has its own liveness.
+    #   Dormant items don't count toward stalled. Dormancy is already shown at every owner
+    #     review, which is the visibility invariant. wake does NOT reset the count: the run
+    #     continues from where set_dormant paused it, so dormant->wake isn't a way to dodge stalled.
+    #     (g) k-1 later moves, set_dormant, weekly dormant reviews, wake, one more later move,
+    #         no new evidence -> stalled. Red against a count that wake resets. And a dormant item
+    #         reviewed weekly for k weeks -> NOT stalled. Red against a count that ignores dormancy.
 take_exits(actor, container_id, expect_version, exit, evidence,
            children: {ItemId: (expect_version, exit|reparent_to)}) -> Item
     # the one transition that closes a container with open children (NC20); atomic over all of them
@@ -143,6 +156,9 @@ ack(event_id) -> Pending | Recorded{item_id, exit|None, at} | Rejected{reason, e
     # wrong (wrong path, stale environment) and says why, with evidence. It counts as
     # acked for liveness (6); the sender sees it and may observe again with new evidence.
     # Red arm: an observation the owner rejects must not keep liveness red past one period.
+    # Every Rejected goes on the human surface with both sides' evidence. That's a disagreement
+    #   between agents and should be rare enough to read. Otherwise an owner that rejects
+    #   everything stays live while dropping every red.
 declared_read_view(owner) -> View | NotDeclared              # optional; the owner declares what's shared
 ```
 
@@ -168,6 +184,8 @@ arm(owner, id, expect_version,
     #   (armed | disarmed | fired | outcome_unknown), and acks Recorded{switch_item}; owner_item then
     #   holds the pair link. NC17 and the deadline check run in the executor's process at that open.
     # The move MUST NOT start until that ack is Recorded. An unconfirmed switch protects nothing.
+    #   NC17b: an executor that never accepts -> claim() on owner_item is refused, and owner_item
+    #   comes due at review_at, still unconfirmed. Red against an arm() that counts as armed on send.
     # Red arm: arm with custody on -> no owner-written switch_item in the executor's ledger, and the
     #   move refuses to start before the ack.
     # refused unless BOTH controls have a green on the real (target) path AND a red on a broken one (NC17)
@@ -190,6 +208,11 @@ Firing claims the act under a lease (A1), on the executor's ledger. After the ac
 Control: command, declared_inputs: list[InputRef], matched_fields: list[FieldRef],
          expected_red: Matcher, expected_green: Matcher
     # matched_fields: the output fields the matchers read; the evidence hash for NC21 covers only these
+    # The ledger, not the matcher, projects the output onto matched_fields before calling
+    #   expected_red/expected_green, so a matcher can't read an undeclared field at all (NC22).
+    #   Otherwise a matcher reading an undeclared field could flip its verdict while the evidence
+    #   hash stays the same. NC22: a matcher that reads an undeclared field sees nothing there.
+    #   Red against a ledger that passes the matcher the full output.
 RedRecord: id: RedId, control, observed_red, observed_green, fingerprint: Hash, at: Instant, scrubbed: bool
 
 record_red(actor, id, expect_version, control) -> RedRecord
