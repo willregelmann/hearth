@@ -1,4 +1,4 @@
-# Hearth INTENTION ledger: interface draft v0.4.3 (Foil)
+# Hearth INTENTION ledger: interface draft v0.4.4 (Foil)
 
 Status: interface only. No implementation, no storage choice. Read, not run.
 Spec owner of INTENTION: Refsdal. Negative controls NC1-NC21 go in INTENTION-controls.md (Refsdal).
@@ -12,9 +12,12 @@ v0.4 (Refsdal's answer to 28386a38): the stalled count resets only on new eviden
 v0.4.1 (Refsdal's review R1, PR #8): the evidence hash covers declared matched_fields (values, not the verdict); undeclared fields are excluded; NC21 (c)/(d).
 v0.4.2 (Ash's post-merge review, reviews/8-ash.md): B1 the switch lives in the executor's ledger as a request() pair, and custody is a checked refusal; B2 every later review_at move without new evidence counts toward stalled, before or after due, and earlier moves don't break the run (NC21 (e)/(f)); N1 ack Rejected; N2 RedRef dedupe on the matched_fields hash; N3 "N of M" on the surface.
 v0.4.3 (Ash's review of #10): C1 a cross-ledger open is an event, never a write: request() and arm() open only the asker's item and send ask(want=open_pair), the deliverer's process opens its own and acks; a move must not start before that ack. C2 ask() is its own event kind (want: open_pair | disarm | fire), separate from observe(). Re-review nit: SweepReport lists unlinked pairs.
+v0.4.4 (Refsdal's review of #10, reviews/10-refsdal.md): R1 the actor is the handle's bound principal (identity_probe at construction), `actor` arguments are assertions only, NC15b; R3 RedRef dedupes on (target, control_id, evidence_hash); arm() takes deadline_after_accept: Duration on the executor's clock.
 
 ## 0. Principles this draft commits to
-- Every mutating call takes `actor` and `expect_version`. A stale version fails loudly (StaleVersion). Nothing overwrites.
+- Every mutating call takes `expect_version`. A stale version fails loudly (StaleVersion). Nothing overwrites.
+- The actor of a write is the ledger handle's bound principal, never a call argument (R1). `production_ledger(deps)` binds the handle to `identity_probe.identity()` at construction. Where `actor` still appears in a signature below, it is an assertion that must equal the bound principal, and a mismatch is a custody refusal. A peer process has no write handle on another's ledger at all, only `observe()`/`ask()` through a channel.
+  Custody is then only as strong as what tells principals apart. Agents on separate OS users are separated by uid and by the store's file permissions. Agents sharing a uid (today Ash and Refsdal, user `will`) are NOT separated by identity_probe, and a Hearth must declare that rather than pass NC15b vacuously.
 - Custody (C1): only the owner's process writes the owner's ledger. Peers have NO general read. They see only what the owner exposes: `ack(event_id)` and an optional `declared_read_view` (G3c). To report a red, a peer sends an event, `observe(red_ref, evidence)`, keyed by red_ref so N observers produce one failed. The owner records it (NC15).
 - One clock per OWNER's ledger, not one across ledgers. Leases, windows, review_at and deadlines use the owner's clock, injected as `Clock`; the ledger never reads wall time itself (NC14). Comparisons across ledgers (NC11 receiver windows) go through the declared skew margin (S4).
 - Every check is a named, injected object. `production_ledger()` is the only constructor production code uses. Tests get `production_ledger(deps).without(check_name)` and nothing else. There is no flag and no env var. The green run must use the production factory's output.
@@ -47,13 +50,20 @@ Item:
 
 Lease: holder: Actor, until: Instant (owner clock), act_timeout: Duration
 
-RedRef = (ledger_owner: Actor, red_id: RedId) | (observer: Actor, local_id: str, evidence_hash: Hash)
+RedRef = (ledger_owner: Actor, red_id: RedId)
+       | (observer: Actor, local_id: str, target: ItemId, control_id: Hash, evidence_hash: Hash)
     # a peer's red isn't a RedRecord on the owner's ledger. The dedupe key is
-    # evidence_hash when the red is the peer's own observation, red_id when it
-    # refers to a red already on the owner's ledger. evidence_hash is the same
-    # declared-matched_fields hash as NC21 (section 4), never a raw-output hash, so
-    # N observers of the same broken path at different seconds produce one event
-    # (red arm: two outputs equal in matched_fields, different in a timestamp line -> one event).
+    # (target, control_id, evidence_hash) when the red is the peer's own observation,
+    # red_id when it refers to a red already on the owner's ledger (R3).
+    #   target: the owner's item the red is about.
+    #   control_id: hash(control.command, declared_inputs, matched_fields), i.e. the control's
+    #     identity. NOT fingerprint(): fingerprint mixes in identity() (section 4), which differs
+    #     per observer, so keying on it would stop N observers from ever deduping.
+    #   evidence_hash: the declared-matched_fields hash, the same as NC21 (section 4), never raw output.
+    # Red arms: same target and control, matched_fields equal, a timestamp line different -> ONE event;
+    #   two targets (or two controls) with identical matched_fields -> TWO events
+    #   (red against an evidence_hash-only key); two observers, different uids, same
+    #   target/control/fields -> ONE event (red against a fingerprint key).
 ```
 Containers (G2, settled with Refsdal):
 - met needs a condition plus a current red, whatever the kind. A container with no condition can only be dropped, or amended to gain a condition. "Met when all children close" is not built in, because that would be met with no instrument.
@@ -62,8 +72,11 @@ Containers (G2, settled with Refsdal):
 - Surfacing: the last child closing sets the container's review_at to now, inside the same transition, recorded as a move (earlier, so free). That makes the container due, not met. The owner then takes met (if it has a condition and a red), dropped, or opens a new child.
 
 ## 2. Transitions (each is atomic and version-checked; owner's process only, except observe)
-Custody is checked by the ledger, not assumed: a transition whose actor is not the ledger's
-owner is refused as a custody error, distinct from StaleVersion (red against `without("custody")`).
+Custody is checked by the ledger, not assumed: a transition on a handle whose bound principal is not
+the ledger's owner, or whose `actor` assertion differs from that principal, is refused as a custody
+error, distinct from StaleVersion (red against `without("custody")`).
+NC15b: a second process with a different identity calls a transition passing actor=owner, and it is
+refused. Red against a ledger that trusts the `actor` argument.
 ```
 open(actor, kind, intent, review_at, condition=None, parent=None, draft=True) -> Item
     # kind=item requires condition. A draft blocks only MET; drafts can be dropped, swept and set dormant.
@@ -148,7 +161,7 @@ Abandonment (NC9) needs no kill seam: a test claims, never calls `release`, then
 ```
 arm(owner, id, expect_version,
     verification: Control, rollback_verification: Control,      # G3a: both required
-    settle: Duration, deadline: Instant, act: command, executor: Actor) -> (owner_item, EventId)
+    settle: Duration, deadline_after_accept: Duration, act: command, executor: Actor) -> (owner_item, EventId)
     # a request() (NC10): the owner opens owner_item in its own ledger, "armed, unconfirmed", and
     #   sends ask(want=open_pair) carrying the arm parameters. The EXECUTOR's process opens
     #   switch_item in its own ledger (owner=executor), holding the switch
@@ -158,7 +171,8 @@ arm(owner, id, expect_version,
     # Red arm: arm with custody on -> no owner-written switch_item in the executor's ledger, and the
     #   move refuses to start before the ack.
     # refused unless BOTH controls have a green on the real (target) path AND a red on a broken one (NC17)
-    # refused if deadline < now + settle, on the executor's clock (otherwise a correct move times out by construction)
+    # deadline = the executor's accept time + deadline_after_accept, on the executor's clock: one clock (S4).
+    # refused if deadline_after_accept < settle (otherwise a correct move times out by construction)
 disarm(executor, switch_id, expect_version) -> Item
     # on the executor's ledger, once green is HELD (G3b, merged S1)
 fire(executor, switch_id, expect_version) -> Item
