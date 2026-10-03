@@ -9,6 +9,7 @@ v0.1: S1-S4 settled with Refsdal; added C1, liveness/freshness, and the switch w
 v0.2: G1 review_at; G2 containers; G3 rollback verification, executor disarm, ack/read view instead of free reads; G4 pending events; G5 succeed picks its exit from the evidence; NC11 restartable receiver; red_id namespace.
 v0.3 (Refsdal's answer to 8e56ae83): container close rules (no orphans NC20; the last child closing makes the container due); review_at postponement rules (NC21, stalled on the surface); liveness reads the sweep's own completion record against the checker's clock (NC16c); the owner writes Pending-at-review_at failed.
 v0.4 (Refsdal's answer to 28386a38): the stalled count resets only on new evidence (a distinct instrument-output hash; for containers, a child change), never on an unchanged condition or new prose.
+v0.4.1 (Refsdal's review R1, PR #8): the evidence hash covers declared matched_fields (values, not the verdict); undeclared fields are excluded; NC21 (c)/(d).
 
 ## 0. Principles this draft commits to
 - Every mutating call takes `actor` and `expect_version`. A stale version fails loudly (StaleVersion). Nothing overwrites.
@@ -74,12 +75,19 @@ amend(actor, id, expect_version, new_condition|new_review_at) -> Item
     #     put the item on the human surface as "stalled". Not refused: stalled is legitimate,
     #     silent stalling isn't.
     #   New evidence, for an item: the move's observation carries an instrument result whose
-    #     content hash differs from every earlier observation on that item (a new red/green
-    #     record, a new computed output). The same hash, or prose with no instrument output,
-    #     does not reset the count. A fixed condition is the discipline, not a stall.
+    #     hash differs from every earlier observation on that item. The hash covers the output
+    #     FIELDS the control declares its matchers read (values, not the matcher's verdict).
+    #     Undeclared fields such as timestamps and run ids are excluded. The same hash, or prose
+    #     with no instrument output, does not reset the count. A fixed condition is the
+    #     discipline, not a stall.
+    #   A seed or clock that changes the declared fields is an INPUT and must be declared (NC13).
+    #     Declared fields that differ across runs with identical declared inputs mean an
+    #     undeclared input exists; NC13 flags it.
     #   New evidence, for a container: a child opened, closed or re-parented.
-    #   NC21 also: three due-time moves with distinct output hashes -> NOT stalled;
-    #     three moves repeating one hash with changed prose -> stalled (red against a prose-diff reset).
+    #   NC21 also: (a) three due-time moves with distinct declared-field hashes -> NOT stalled;
+    #     (b) three moves repeating one hash with changed prose -> stalled (red against a prose-diff reset);
+    #     (c) raw outputs differing only in an undeclared timestamp line -> stalled (red against a raw-output hash);
+    #     (d) same verdict, different declared values -> NOT stalled (red against a verdict-only hash).
 take_exits(actor, container_id, expect_version, exit, evidence,
            children: {ItemId: (expect_version, exit|reparent_to)}) -> Item
     # the one transition that closes a container with open children (NC20); atomic over all of them
@@ -128,7 +136,9 @@ Firing claims the act under a lease (A1). After the act, the executor runs rollb
 
 ## 4. Reds and fingerprints (A5)
 ```
-Control: command, declared_inputs: list[InputRef], expected_red: Matcher, expected_green: Matcher
+Control: command, declared_inputs: list[InputRef], matched_fields: list[FieldRef],
+         expected_red: Matcher, expected_green: Matcher
+    # matched_fields: the output fields the matchers read; the evidence hash for NC21 covers only these
 RedRecord: id: RedId, control, observed_red, observed_green, fingerprint: Hash, at: Instant, scrubbed: bool
 
 record_red(actor, id, expect_version, control) -> RedRecord
