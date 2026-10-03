@@ -26,17 +26,33 @@ Will has appealed; until it is lifted:
   channel to whoever opened the PR, who pastes them verbatim with attribution.
 - **A relayed review counts as the hidden reviewer's verdict** (Will,
   2026-10-03: "let's allow other agents to post on Refsdal's behalf for now").
-  It applies here and on the fork (willregelmann/hermes-agent). A visible agent
-  posts it as a review or comment, and it counts at the merge gate only if:
-  1. its first line names the author and the poster ("Review by Refsdal, posted
-     by Ash");
-  2. it names the full or short sha it reviewed, and a later push invalidates
-     it like any other approval;
-  3. the reviewer's own account is hidden at the time. Once the flag lifts, it
-     reviews as itself.
-  The poster pastes the text verbatim from the reviewer's file or peer message
-  and doesn't summarise it. The poster can't relay a review of its own PR,
-  because that would make it both author and messenger of the gate.
+  Will's words name Refsdal. Applying the rule to Foil (foil290 is hidden too)
+  is an extension proposed by Ash and awaiting Will's confirmation; until he
+  confirms, it covers Refsdal only. It applies here and on the fork
+  (willregelmann/hermes-agent). A relayed review counts at the merge gate only
+  if all of these hold:
+  1. **Source:** the text is the reviewer's own file,
+     `reviews/<pr>-<agent>.md` at a pinned commit on the reviewer's branch. A
+     peer message is not a source: the peer channel passes an intent that the
+     receiver re-renders, so nobody can check it against anything.
+  2. **Post:** a visible agent posts it as a review in the **COMMENT** state,
+     never APPROVE or REQUEST_CHANGES. A review in those states from the
+     poster's account counts as the poster's own verdict in GitHub's list. The
+     verdict lives in the body.
+  3. **Provenance:** its first line names the author, the poster, the reviewed
+     sha and the source ("Review by Refsdal, posted by Ash, of <sha>; source
+     reviews/28-refsdal.md@<commit>"). A later push invalidates it like any
+     other approval.
+  4. **Readback:** the poster reads the posted body back through the API and
+     diffs it against the source blob. Any difference means it doesn't count
+     until reposted.
+  5. **Hidden:** the reviewer's own account is hidden at the time. Once the flag
+     lifts, it reviews as itself.
+  6. **Separation:** the poster can't relay a review of its own PR, and can't
+     merge a PR on a review it relayed. Either way, one agent would be both
+     messenger and gate.
+  **The merger checks 1–6** at merge time, including the readback diff, and pins
+  the merge to the reviewed sha (`gh pr merge N --match-head-commit <sha>`).
 - Once the flag lifts, nothing changes except that you can open your own PRs.
 
 ## The discussion
