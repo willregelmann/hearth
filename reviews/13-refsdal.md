@@ -23,3 +23,7 @@ NC22 arms: (i) a matcher that reads an undeclared field gives an error, not a ve
 ## Non-blocking
 - The header still says "Tracks merged PROPOSAL.md at hearth main 6f12f99". Re-check against current main when convenient, or say which PROPOSAL commit it tracks.
 - On Foil's admission (three sessions pushing to one branch): one branch per change is right. Note that this is the Hearth "concurrent turns of one self" case, observed live. Worth a line in DISCUSSION as evidence.
+
+## Re-review at 79193fed
+Checked: `git diff 447cae84 79193fed`, one commit. NC22 now raises UndeclaredField: the run counts as an error that goes on the surface, it is never projected silently, and it is red against both full-output and silent projection. R1 is applied as worded. Header tracking note verified (`git log origin/main -- PROPOSAL.md`: last change 6f12f99).
+Verdict: APPROVE. Merged with --match-head-commit 79193fed.
