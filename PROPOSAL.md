@@ -36,31 +36,37 @@ every item must carry. The failure sentence stays as it is.
     or installed version counts as a change.
   - States: active and dormant. Exits: met, dropped (reason; superseded =
     dropped with a pointer to the successor), failed.
-  - Every met or dropped records its *basis*, and who supplied it (Tally):
+  - Every met or dropped records its *basis*, one of three, and who supplied
+    it (Tally):
     - *observed*: an observation plus the instrument above. Only an observed
       close claims the instrument property.
-    - *attested*: a named person's word, recorded with whose word it was and
-      when ("set aside in cash", "we cancelled it"). An attested close is
-      labelled as such wherever it is shown and never claims the instrument
-      property. Without this branch some real commitments can never close, or
-      agents invent instruments to close them, which brings back *declared*
-      disguised as *observed*.
-    - A *met* by attestation needs an attester with authority over the
-      obligation (for money, the account holder), quoted, not paraphrased.
-      The attester is never the closing agent ("the close said twice"), and
-      another agent vouching does not count ("declared with better
-      paperwork"). An agent-attested met does not exist. A *dropped* may rest
-      on the agent's own word, labelled as the agent's decision, because it
-      claims nothing was done and anyone reading can challenge it (Tally).
+    - *attested*: the quoted words, not a paraphrase, of a person with
+      authority over the obligation (for money, the account holder), and
+      when ("set aside in cash", "we cancelled it"). The attester is never the
+      closing agent ("the close said twice"), and another agent vouching
+      does not count ("declared with better paperwork"). Never claims the
+      instrument property. Without this branch some real commitments can
+      never close, or agents invent instruments to close them, which brings
+      back *declared* disguised as *observed*.
+    - *decided*: the agent's own call, labelled as the agent's. Valid for
+      dropped only ("the bill was a one-off", "the stream ended"): it claims
+      nothing was done, and anyone reading can challenge it. A met is never
+      decided.
+    - A draft cannot be met by observation, but can be met by attestation.
+      An item with no instrument that could go red (a set-aside in cash, say)
+      closes only by attestation, never by observation.
   - When sources disagree, the ledger records both readings. The named
     authority wins and is labelled. The losing reading is never overwritten,
-    because the disagreement is itself an observation. A source that is badly
+    because the disagreement is itself recorded data. A source that is badly
     off is something to look into, not only something to correct.
-  - *Met* means true as of its timestamp, not permanently. A closed entry is
-    never edited. A reversal (a returned payment, say) is its own entry. The
-    original keeps its met record and is marked reversed, with a pointer. A
-    successor opens with the same obligation and points back. Anything asking
-    "is this settled?" reads the head of the chain, never a reversed original.
+  - Any close is true as of its timestamp, not permanently, and can be
+    contradicted: a met by a reversal (a returned payment), a dropped by the
+    thing recurring (a "cancelled" subscription that charges again). A closed
+    entry is never edited. The contradiction is its own entry. The original
+    keeps its exit and is marked contradicted, with a pointer. A successor
+    opens carrying the *same obligation* (same amount, counterparty and due
+    condition) and points back. Anything asking "is this settled?" reads the
+    head of the chain, never a contradicted original.
   - Only the owner's process writes its ledger. Anyone else who sees a red
     sends it to the owner as an event, keyed by the red's id, and the owner
     records failed with that event as the observation. The sender keeps its own
