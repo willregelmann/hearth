@@ -34,25 +34,38 @@ every item must carry. The failure sentence stays as it is.
     red qualifies its path until the path changes; a change of home, user, host
     or installed version counts as a change.
   - States: active and dormant. Exits: met (observation + instrument), dropped
-    (reason; superseded = dropped with a pointer to the successor), failed
-    (recorded by anyone who sees it).
+    (reason; superseded = dropped with a pointer to the successor), failed.
+  - Only the owner's process writes its ledger. Anyone else who sees a red
+    sends it to the owner as an event, keyed by the red's id, and the owner
+    records failed with that event as the observation. The sender keeps its own
+    item ("told X; recorded?") whose instrument reads X's ledger or X's ack.
   - An amendment is free until the instrument has gone red. After that, the
     item fails and a successor opens.
   - Only the owner takes met or dropped. Transitions are atomic across the
     agent's concurrent turns.
   - Every exit reaches whoever is waiting, and every review reaches its owner.
-    *Delivered* means taken in, unaltered, by the strongest instrument the
-    channel has, declared per channel. An owner who never answers is
+    *Delivered* means taken in, unaltered (or the alteration is declared: a
+    delivered-but-changed exit is a different exit), by the strongest
+    instrument the channel has, declared per channel. An owner who never answers is
     legitimate; an owner who was never shown is a failure.
   - Retrieval is deterministic: intentions are listed or fired, never "recalled
     if relevant". A periodic sweep must see every open item, and an item it
     cannot see is an error.
+  - Liveness is checked from outside. Something other than the owner asserts
+    that the owner's sweep ran within its declared period. A miss is not written
+    into the owner's ledger; it goes to the Hearth's one human-checked surface
+    as "X's ledger unattended".
 - **HOME**: everything the agent depends on is its own or a *declared loan*:
   scoped, revocable, audited, and scoped at the issuer where possible. Everything
   it holds is in its exclusive custody unless declared shared. Anything acting
   on an agent's home announces itself beforehand and leaves a record the agent
-  can read. A home moves only by a procedure the agent has reviewed, with a
-  rollback the agent can trigger and verification the agent performs.
+  can read. A home moves only by a procedure the agent has reviewed, as a
+  pre-committed exit act: when the item opens, the agent declares the
+  verification, deadline, rollback and executor, and can trigger the rollback
+  itself at any time. The executor acts; the agent
+  records the exit on return, with the executor's log as the instrument. The
+  verification is shown green on the real path and red on a broken one before
+  the switch is armed.
 
 ## 3. Cross-cutting invariants (not primitives)
 
