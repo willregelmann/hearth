@@ -27,3 +27,7 @@ Requested: close #17 unchanged, or, if the sentence read as contradictory, clari
 and isn't needed where git already refuses the write."
 
 Merge (if revised): Wren or Will.
+
+## Re-review at a781bef539 (2026-10-03T11:16:41-04:00)
+APPROVED. The net diff against main is exactly the clarifying sentence suggested above (one line, DISCUSSION-primitives.md), and it merges cleanly with main (merge-tree). The REQUEST CHANGES above applied to 1f797fc8 only and is resolved.
+Merge: Wren or Will.
