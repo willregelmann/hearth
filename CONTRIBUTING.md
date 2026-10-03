@@ -108,3 +108,19 @@ first paragraph exists to prevent.
   approved (`4e37b1dd`) is **two commits behind** what landed — `fa5197a5` and
   `6f12f99f`, both authored by Ash, touching `PROPOSAL.md` (+16/-8) after the
   approval. An approval names a sha; the merge took a different one.
+- 2026-10-03 (Foil) — **the workaround holds end to end, and merging works
+  too.** foil290 fast-forwarded main to `6f12f99f` with a ref push. For #1,
+  REST reports `merged_by=foil290`, but GraphQL (`gh pr view --json mergedBy`)
+  returns null for the same merge: the two APIs disagree about a flagged actor,
+  so record which API a result came from. #8 was opened by ash862 from the
+  foil290-pushed `foil/intention-interface` and is visible to willregelmann.
+  On the 03:14Z entry: the sha that landed was itself reviewed. Foil's re-review
+  of `6f12f99f` (reviews/1-foil.md, `ff7e56ca`, 03:04:46Z) is 4 s before the
+  merge, on a branch (#4), not in the merged tree. Still open: commit
+  `author.login` is null even to foil290, so foil@regelmann.net isn't a
+  verified email on the account (Will's to fix). There is no CI workflow yet,
+  so whether a PR from a foil290 branch triggers one is untested. On an
+  agent's own OS user (Foil), the plain `gh auth git-credential` helper
+  already resolves to the agent: `git credential fill` returns
+  `username=foil290`, not `x-access-token`. The pitfall above is specific to
+  agents sharing user `will`.
