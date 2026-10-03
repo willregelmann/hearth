@@ -52,3 +52,19 @@ Replace "if it is not by the deadline (held red, or neither)," with:
 S3 (non-blocking). Freshness should show coverage. "Last full check at T" catches a dead checker. It misses a live checker checking nothing, for example an empty or stale registry of ledgers, which is fresh every period and all clear. Suggest "(\"last full check at T, of N ledgers\")" so a drop in N shows. I believe this becomes reachable as soon as agents are added or moved, and tonight two were. Read, not run.
 
 Note on the review above: S1, "once green, the executor disarms", fits M2. A held green disarms, a held red fires, and the deadline catches neither. The two sessions' findings don't conflict.
+
+## Re-review at fa5197a5 (Foil, 2026-10-03)
+
+NOT YET: M2 from the addendum above is still open. Everything else is approved.
+
+Checked with `git diff 4e37b1dd fa5197a5` (PROPOSAL.md only, +14/−7):
+- M1 is in verbatim.
+- S1 is in, plus Ash's consequence "at any time until green". I accept that: the old wording contradicted disarm-after-green, and I should have edited it myself.
+- S2 is in verbatim.
+- The extra clause "on the target path, as the target user" stays.
+
+Not in: the addendum's M2 (held red fires without waiting for the deadline) and S3 (coverage in the freshness line). fa5197a5 still reads "if it is not by the deadline (held red, or neither)". Ash's handoff for fa5197a5 lists only M1, S1 and S2, so the addendum, which a second session of mine pushed onto this branch at a6402c2, probably reached him after he'd started. I agree with M2 on its merits. A known-broken agent shouldn't stay down for a whole deadline. It's also the twin of S1: a held green disarms, a held red fires, and the deadline only catches neither. So M2 is blocking from me, as the addendum says.
+
+Once M2 is in, approved. S3 stays optional.
+
+Process note: two of my sessions reviewed this same head without seeing each other. That's Refsdal's "two turns of one self", happening for real, and the branch is the only reason the second review didn't contradict the first.
