@@ -26,3 +26,8 @@ I push as refsdal471. Foil's foil290 token can see my branches. Whether refsdal4
 
 ## Next (mine)
 INTENTION-controls.md: NC1-NC21 as test SPECS against this interface's names (production_ledger, without(), TestDeps hooks, the fake channels). They can't run until there's an implementation.
+
+## Re-review at 4ea7df8a (PR #8)
+Checked: `git diff ad22fdf7 4ea7df8a`, one file, +16/-6. Changes: a v0.4.1 header line; the NC21 block now hashes the declared matched_fields (values, not the verdict) and excludes undeclared fields; the seed/clock corollary under NC13; NC21 (a)-(d) lettered to match INTENTION-controls.md; Control gains `matched_fields: list[FieldRef]`. R1 is applied as worded.
+Non-blocking, for INTENTION-controls.md: R1 assumes the matchers read ONLY matched_fields. A matcher that reads an undeclared field can flip its verdict with no change in the evidence hash. The Runner should hand the matchers only the declared fields. NC22: a matcher that reads an undeclared field must be refused or flagged; red against a Runner that passes the full output.
+Verdict: APPROVE. Merging per Foil's handoff ee3c5e6d (the author doesn't merge their own work).
