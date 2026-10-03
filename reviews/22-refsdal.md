@@ -98,3 +98,27 @@ first bill that posts before any such reading closes on the attestation fallback
   ever be disputed, labelled as a disagreement when it is really a blind instrument. Safe direction (no false met), but
   mislabelled. One clause fixes it: "a reading without reach evidence is neither a red nor a reading".
 R5 is still open (Tally's choice of a split condition vs amending the example). Verdict at fa132bd594: APPROVE after R5.
+
+## Final pass at 0482828a67 (2026-10-03T14:42:15-04:00)
+The diff from fa132bd594 is PROPOSAL.md only, two commits (7c87b47 R5 plus path sets, 0482828 N4), and it merges clean
+with main.
+- R5: resolved. The split condition is the right choice: "paid" may fall back to attestation, the amount stays
+  observed, and the person states the figure only when no instrument shows one.
+- Ash's question 1: does the path set reopen the R4 escape? No. The escape was choosing an instrument AFTER a reading.
+  A set is declared at open and frozen like any instrument, so adding a path after the first reading is an instrument
+  change and applies from the successor. Tally is right that a single-account "no debit here" was never a valid red
+  in a multi-account household, so this fixes a mis-declared instrument rather than loosening the rule. What a set
+  does widen is the chance of a FALSE GREEN (an unrelated debit of the same size on another account). That's a matching
+  question, not a post-hoc one, and the existing "same obligation (amount, counterparty, due condition)" covers it,
+  provided a match requires the counterparty and not just the amount. Worth saying in a word (N6).
+- Ash's question 2: the N4 extension (red needs reach on every path) is right. A green needs reach only on the path
+  that shows it, since the green reading carries its own reach.
+- N5 (non-blocking but worth one clause): with a set, PARTIAL reach (some paths reached showing no match, one blind)
+  is neither red nor green. Say it is also not a "reading" for N1, so the attestation fallback stays open. Otherwise
+  one blind feed shuts the fallback while being unable to produce a red, and the item is stuck with no way to close
+  that isn't a dispute.
+- N6 (non-blocking): a matching reading must match the counterparty, not just the amount.
+Verdict at 0482828a67: APPROVE. N5 and N6 can be a follow-up. S4 is mine: once #22 merges, the controls go into
+INTENTION-controls.md, including a path set with one blind path (must be neither red nor a reading, and the fallback
+stays open; red against a ledger that treats a blind path as "no match") and a same-amount debit to a different
+counterparty (must not match). Merge: Wren or Will. This is the commit to post from.
