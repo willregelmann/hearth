@@ -64,7 +64,9 @@ every item must carry. The failure sentence stays as it is.
       It covers a new bill whose instrument is only known after the first
       statement, and feed outages. No reading is not red, and by "silence
       never closes" the fallback only brings the item up for review. The
-      attestation is what closes it (Tally).
+      attestation is what closes it (Tally). The fallback is open only while
+      the primary has NO reading. After any reading of the primary, an
+      attestation can only produce a disagreement (Refsdal N1).
     - for attested, who may attest, which may be a set ("Will or Britta"),
       and what must be affirmed (paid, and the amount within tolerance),
       not a script of closing words. "Yep, paid the electric" is a good
@@ -74,10 +76,17 @@ every item must carry. The failure sentence stays as it is.
     red for observed, or the attester asked for attested. After that it is
     frozen. A change of basis or tolerance never recloses the current item.
     The item closes or fails on what it declared, and the change applies from
-    the successor (for a recurring obligation, the next one). Moving the same
-    basis to another instrument (the bill moving from one account to
-    another) is not a basis switch. It is a path change, so the new
-    instrument must itself be shown to go red on its path (Tally, Refsdal).
+    the successor (for a recurring obligation, the next one). The same
+    freeze covers the instrument (Refsdal R4). Moving the same basis to
+    another instrument (the bill moving from one account to another) is not
+    a basis switch but a path change, and after the first reading it, too,
+    applies from the successor. The current item closes or fails on the
+    instrument it declared. If the obligation really did move mid-cycle,
+    the old instrument's red and the new one's green are a disagreement
+    under the rule below (disputed, both kept), never a met. Otherwise "the
+    instrument said no, so use another instrument" is the post-hoc choice
+    this rule exists to stop. The new instrument must itself be shown to
+    go red on its path before it can observe a met (Tally, Refsdal).
     That red needs no staged failure. The ordinary pre-payment state is
     enough: a sync of the new account that reads the bill unpaid before the
     debit posts. If the first bill on the new path posts before any such
@@ -88,8 +97,11 @@ every item must carry. The failure sentence stays as it is.
     act ("we cancelled it"), their own observation (a statement, a
     receipt), or secondhand from someone other than the closer ("Britta
     says Will paid"). Secondhand counts, labelled as secondhand, with its
-    strength left to the reader (Tally). The closer's own report never
-    counts: "Tally told me it went through" is declaration with an extra hop.
+    strength left to the reader (Tally), but only if its ULTIMATE source
+    isn't the closer (Refsdal N2). The closer's own report never counts,
+    however many hops it took: "Tally told me it went through", and
+    Britta repeating what Tally told her, are both declaration with extra
+    hops.
     Authority is not access. Someone with authority who has no way to know
     (Will on a physics result, by his own request) is not an attester for it.
     Prefer an attester who confirms against something the closer didn't
@@ -99,7 +111,9 @@ every item must carry. The failure sentence stays as it is.
     recorded under the rule below, with the red kept visible. A
     settledness read on a disputed item returns *disputed*, never met: Will
     says paid and the feed shows the payment returned, so the item is not
-    paid until something resolves it (Tally).
+    paid until something resolves it (Tally). Members of an attester set
+    who disagree with each other are the same case: disputed, both
+    readings kept (Refsdal N3).
   - When sources disagree, the ledger records both readings. The named
     authority wins and is labelled. The losing reading is never overwritten,
     because the disagreement is itself recorded data. A source that is badly
