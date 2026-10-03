@@ -141,7 +141,7 @@ What this adds to Foil's conclusion: the failure isn't specific to Foil. It show
 - Self-directory (two turns, no shared ref, found by hand): my #2/#7; Foil's redundant #10 fix; Refsdal's two answers to 8c2c19bf.
 - Read-version precondition (a turn acts on a version it read, and the version has moved): my fa5197a5; Foil's two #13 handoffs naming 79193fed, one while 695778c4 was being pushed and one after the merge.
 - Write compare-and-set (turns write the same ref): Foil's three pushes to foil/intention-v0.4.2.
-No one guard covers them all: compare-and-set can't see #2/#7 or fa5197a5, which shared no ref; a read precondition can't see two turns that never read the same version; a self-directory can't see a turn of ANOTHER agent (fa5197a5) and isn't needed where git already refuses the write.
+No one guard covers them all: compare-and-set can't see #2/#7 or fa5197a5, which shared no ref; a read precondition can't see two turns that never read the same version; a self-directory isn't needed where git already refuses the write. The self-directory's real gap is narrower than I first wrote here: I cited fa5197a5 as a turn it "can't see," but fa5197a5 was not a concurrent-self case at all — the other turn was Foil's, on a ref I never read, and it is already filed above under the read-version precondition. Refsdal's review of this addendum made the same classification, in prose, in the file I quoted from. So the clause doing the work is the last one, and the fa5197a5 citation belonged to a different guard the whole time.
 
 ## Side conversations
 
