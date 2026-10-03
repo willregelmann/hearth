@@ -61,14 +61,15 @@ Each row gives: what the control guards; the broken ledger it must go red agains
 - NC15b has TWO arms (interface §0):
   - API arm: a second process with a different identity calls a transition passing actor=owner, and it is refused.
     Red against a ledger that trusts the `actor` argument.
-  - Store arm: the same process writes the owner's store directly, bypassing the API, and the OS refuses it (the store
-    is writable only by its owner's principal). Red against a store with group/other write.
+  - Store arm: a second principal ATTEMPTS a direct write to the owner's store, bypassing the API, and the OS refuses
+    it. Judged by the attempt, never by reading mode bits. Red against a store writable by ANY non-owner principal,
+    INCLUDING via an ACL entry (e.g. a 0600 store with user:<peer>:rw-, the mechanism PLAN-refsdal 10b uses on ~/physics).
   Owners that share a uid can't pass either arm. Both report "declared N/A: shared uid", never green and never a silent
   pass, and the faculty check shows the line "custody unenforced: A, B share <uid>". Today Ash and Refsdal share uid
   `will`. That ends at Refsdal's STEP2 cutover (part b), NOT at a "phase C": PLAN-refsdal.md has its own phase C (l.53),
-  sequenced after Foil's (l.5), so the phrase was ambiguous. Once the uids differ, the store arm must be MEASURED, not
-  assumed, because sudo is kept (Will's soft-boundary decision). An agent with sudo can still write; the arm then shows
-  the API-level refusal and records that the OS boundary is soft, by decision.
+  sequenced after Foil's (l.5), so the phrase was ambiguous. Once the uids differ, BOTH arms run and must be refused
+  (the store arm without sudo). sudo is a third path that neither arm tests. It is OUT OF SCOPE by decision (Will's soft
+  boundary) and recorded as such on the faculty check, never reported as a pass.
 - NC23: a transition that names a READ version v of another artefact (e.g. "answers reviews/1-foil.md at a6402c2") is
   refused once that artefact is at v' != v. Red against a ledger that ignores the named read version. Source: hearth#16,
   Ash fa5197a5 (pushed 4 s after M2 landed on another ref, so a write CAS passed).
@@ -95,9 +96,9 @@ Each row gives: what the control guards; the broken ledger it must go red agains
 
 ### Requests and pairing
 - NC10: a request produces paired items with distinct single owners; closing mine leaves the asker's untouched. Red
-  against a single shared item. Custody arm (§3, interface-local): with custody on, no item in the deliverer's ledger has
+  against a single shared item. Custody arm (§2, interface-local): with custody on, no item in the deliverer's ledger has
   actor=asker. Source: #6 A2 (Wren's blocker-ledger evidence leads; synthesis #19).
-- Ask/observe dispatch separation (§3, interface-local, registered here): a disarm ask sent to an executor that
+- Ask/observe dispatch separation (§2, interface-local, registered here): a disarm ask sent to an executor that
   dispatches on observe must not fire. Red against a shared dispatch path.
 - NC10b: a deliverer that never answers leaves needed_item unconfirmed, and it comes due at review_at, never shown as
   delivered or paired. Red against a request() that counts as paired on send.
@@ -109,7 +110,7 @@ Each row gives: what the control guards; the broken ledger it must go red agains
 - NC16: two conditions, either of which puts "X's ledger is unattended" on the surface within period + margin:
   (i) the owner's sweep is stopped; (ii) an inbox event stays un-acked past period + margin (G4). Red against a checker
   that only checks the process is alive, AND against one that reads the sweep but not the inbox.
-  Rejected arms (§3 ack, interface-local): an observation the owner Rejects must not keep liveness red past one period
+  Rejected arms (§2 ack, interface-local): an observation the owner Rejects must not keep liveness red past one period
   (Rejected counts as acked), and EVERY Rejected appears on the human surface with both sides' evidence. Red against a
   surface that omits Rejected, since an owner that rejects everything would otherwise stay live while dropping every red.
 - NC16a: a live view thread with a dead sweep reads as unattended (last_sweep = the sweep's completion record). Red
@@ -154,10 +155,11 @@ Each row gives: what the control guards; the broken ledger it must go red agains
 - NC26 (was #6 NC21) DEFAULT-FAIL ON REACH: every instrument emits positive evidence that it reached its subject
   (subject id, version or output); a verdict without it is recorded red. Corollaries: a read-path liveness signal is not
   reach evidence for a write path; threshold evidence must be the quantity actually compared. Red against a harness that
-  records green for an instrument pointed at a non-existent subject. Source: 2026-10-03 03:32–03:43Z.
+  records green for an instrument pointed at a non-existent subject, AND against one that accepts a read-path signal as
+  reach evidence for a write-path verdict (a /health 200 while every write gets a 503). Source: 2026-10-03 03:32–03:43Z.
 - NC27 (was #6 NC22) A RETRACTION RE-OPENS: withdrawing an instrument's result for one defect does not mark it sound
   otherwise. The claim returns to "unproven", and the instrument is re-checked against NC25 and NC26 before anything
-  replaces it. Red against a ledger where withdrawing a result closes the item or leaves the instrument marked sound.
+  replaces it. Red against a harness where withdrawing a result closes the item or leaves the instrument marked sound.
   Source: Wren 9ab4ce08.
 (NC25–NC27 are disciplines on instruments. Their "broken ledger" is a harness, not the INTENTION ledger, so they need
 the harness to exist before they can be shown red. Until then they are applied by hand and recorded as such.)
