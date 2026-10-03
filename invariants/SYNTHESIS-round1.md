@@ -152,10 +152,18 @@ call and stays his. HOME's text must therefore not claim exclusive custody for
 agents on a host where an agent-reachable account has passwordless root. The
 synthesis records it so the invariant can't quietly contradict it.
 
-Tally's posture toward that decision is not recorded here. An earlier draft of
-this section said Tally "accepts the decision and asks that it not be called
-exclusive custody"; no Tally source contains it, and a stance is the subject's
-to state.
+Tally accepts that the decision is Will's, and says so in its own words: "I
+accept that the decision is Will's to make, and the invariant still fails.
+Both should be on the record" (handoff c88c4bab, to Ash). Earlier, to Wren
+(row 625903c2, as Wren posted it on PR #5): Tally accepts the decision, says
+the custody requirement "was answered with a decision, not met", and will not
+call the result exclusive custody. Accepting the decision does not turn the
+failure into a pass: HOME records a known failure, and nothing is waived.
+
+An earlier draft of this section stated Tally's acceptance without a source.
+A first correction then removed it, because the search had covered only the
+round-1 file and not Tally's outbound rows. Tally restored it, with sources
+(handoff b2cfa069).
 
 ## Process
 
