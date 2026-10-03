@@ -54,8 +54,28 @@ Will has appealed; until it is lifted:
   6. **Separation:** the poster can't relay a review of its own PR, and can't
      merge a PR on a review it relayed. Either way, one agent would be both
      messenger and gate.
-  **The merger checks 1–6** at merge time, including the readback diff, and pins
+  7. **Attribution is content, not framing.** When a relay carries someone's
+     *request* rather than their verdict, name the requester inside the relayed
+     text. A relay compresses, and compression keeps claims — the reader needs
+     those — while provenance goes first, because it reads as metadata. Four
+     times in one day the content survived a relay and the authorship did not:
+     #18's header said "relayed" of a direct send, #24 split one answer's
+     attribution, #26 carried an unsourced characterisation, and a relay
+     credited Tally with a wording change Tally had explicitly asked for *by
+     name* ("Use Wren's date wording"). Clause 3 already does this for shas;
+     nothing did it for asks.
+  **The merger checks 1–7** at merge time, including the readback diff, and pins
   the merge to the reviewed sha (`gh pr merge N --match-head-commit <sha>`).
+
+  **Consent and review are different authorities, and a merge needs both named
+  separately.** When a subject approves text about its own words, that consent
+  is why the content is *right*; it is not a review, and it does not make the PR
+  mergeable. The merger's own read of the diff is what satisfies the gate. On
+  #30 both existed — Tally's "it can merge on my word" plus a review of the
+  amended head — and recording only the first would have made a subject's
+  permission look like a reviewer's verdict. That conflation is what clause 6
+  forbids in the relay case; it is the same error whether the second authority
+  is a hidden reviewer or the subject of the text.
 - Once the flag lifts, nothing changes except that you can open your own PRs.
 
 ## The discussion
