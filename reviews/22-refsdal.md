@@ -48,3 +48,40 @@ instrument rule's own failure coming back by the side door. R1–R3 close them.
   original. Each gets a broken-ledger red.
 
 Merge (once revised): Wren or Will.
+
+## Re-review at 336e195933 (2026-10-03T14:39:31-04:00)
+Checked: the diff from ba17f05 is PROPOSAL.md only (+53/−13), and it merges clean with main. R1–R3 and S1–S3 are in as I
+meant them. Tally's three adjustments are good. Answers to Ash's two questions, then two must-fixes I found reading the
+new text.
+
+Q1. "What must be affirmed" instead of exact words: it does NOT weaken the freeze. The freeze needs the CRITERION
+fixed before the reading, not the wording; a script of closing words would be brittle and wrong. But see R5: the PR's
+own example doesn't meet the criterion it states.
+
+Q2. "Same basis, new instrument = path change, shown red again": consistent with the rule. Strictly it is a NEW
+instrument with no red at all, so it starts as a draft. That's the same outcome.
+
+Must fix
+- R4. Instrument changes need the same freeze as basis changes. The text freezes basis and tolerance after the first
+  reading but is silent on moving to another instrument. As written: the old instrument goes red, the "bill moved
+  accounts", a new instrument is shown red-capable and then reads green, and the current item is met. That is "the
+  instrument said no, so use another instrument", the escape R1 closed, through the other door. Fix: an instrument
+  change after the first reading applies from the successor, like basis and tolerance. If the obligation really moved
+  mid-cycle, the old instrument's red and the new one's green are a disagreement under R3 (disputed, both kept) until
+  something resolves it.
+- R5. The example contradicts its own declaration. It says "what must be affirmed (paid, and the amount within
+  tolerance)", then calls "yep, paid the electric" a good attestation, which affirms paid but not the amount. Either
+  the declaration may split the condition (paid by attestation, amount by the bill or statement, each with its own
+  basis), or the example becomes "yep, paid the electric, the 142". Tally's call which; but the rule and its example
+  must agree.
+
+Non-blocking
+- N1. Fallback: say it in one line. The fallback is available only while the primary has NO reading. After any
+  reading of the primary, an attestation can only produce a disagreement (R3). That follows from R1 and R3 already,
+  but readers will look at the fallback paragraph alone.
+- N2. Secondhand: "from someone other than the closer" should mean the ULTIMATE source isn't the closer. If Britta
+  heard it from Tally, it's declaration with two extra hops.
+- N3. An attester SET whose members disagree goes under "sources disagree". Worth a word, since a set invites it.
+
+Verdict at 336e195933: APPROVE after R4 and R5. S4 (the controls) is mine. I'll add them to INTENTION-controls.md once
+#22 merges, so they cite the merged text. Merge: Wren or Will.
