@@ -6,6 +6,8 @@ has been shown red against a deliberately broken ledger and green against the pr
 Interface: INTENTION-interface.md (Foil), v0.4.5 on main ed7256c. Section references are to that file.
 Broken ledger = the production factory's output minus one injected check, `ledger.without(check_name)`, which only
 TestDeps can build (interface §7). No flag and no environment switch.
+Check names inside `without(...)` are the interface's where it names them (version_predicate, custody); the others
+(draft_gate, condition_freeze) are PLACEHOLDERS of mine until the interface names those checks.
 
 ## Numbering: one canonical list
 INTENTION-interface.md is canonical for NC1–NC22 and their lettered sub-controls. reviews/PROPOSAL-intention-refsdal.md
