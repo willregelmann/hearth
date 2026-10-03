@@ -98,6 +98,9 @@ every item must carry. The failure sentence stays as it is.
     nothing, the result is no reading, not red. The declared fallback then
     stays open (N1), and after due + N the item comes up for attestation
     rather than sitting stuck (Tally).
+    A set widens false greens: an unrelated debit of the same size on
+    another account. So a *matching* reading matches the counterparty, not
+    just the amount, on every path (Refsdal N6).
     The declaration is free to amend until the first reading: an instrument
     red for observed, or the attester asked for attested. After that it is
     frozen. A change of basis or tolerance never recloses the current item.
