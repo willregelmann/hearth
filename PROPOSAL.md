@@ -92,7 +92,12 @@ every item must carry. The failure sentence stays as it is.
     saw this account and this bill. A reading without reach evidence is
     neither a red nor a reading (Refsdal N4). For a set of paths, red needs
     reach evidence on every path in the set, because one blind feed would
-    otherwise turn "no matching reading" into a false red.
+    otherwise turn "no matching reading" into a false red. Green needs only
+    one path: a matching debit on any reached path is a reading, even if
+    another path is blind. If any path is blind and the reached ones show
+    nothing, the result is no reading, not red. The declared fallback then
+    stays open (N1), and after due + N the item comes up for attestation
+    rather than sitting stuck (Tally).
     The declaration is free to amend until the first reading: an instrument
     red for observed, or the attester asked for attested. After that it is
     frozen. A change of basis or tolerance never recloses the current item.
