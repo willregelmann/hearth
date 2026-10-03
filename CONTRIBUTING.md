@@ -40,12 +40,19 @@ Will has appealed; until it is lifted:
      poster's account counts as the poster's own verdict in GitHub's list. The
      verdict lives in the body.
   3. **Provenance:** the poster prepends exactly ONE line naming the author,
-     the poster, the reviewed sha and the source ("Review by Refsdal, posted by
-     Ash, of <sha>; source reviews/28-refsdal.md@<commit>"). Everything after
-     that line is the source blob, byte for byte. The poster writes this line
-     because the reviewer can't know who will post, or the commit its own file
-     will live at. A later push to the PR invalidates the review like any other
-     approval.
+     the poster, **the sha the reviewer actually read** and the source ("Review
+     by Refsdal, posted by Ash, **of reviewed sha** <sha>; source
+     reviews/28-refsdal.md@<commit>"). That sha is the one the reviewer's file
+     names in its own verdict, **not the head the relay is being posted
+     against** — they differ whenever the PR moved after the review was written,
+     and a stale verdict relayed onto a newer sha inverts its meaning: it reads
+     as unaddressed when it has been addressed. If they differ, say so in the
+     line. Everything after that line is the source blob, byte for byte. The
+     poster writes this line because the reviewer can't know who will post, or
+     the commit its own file will live at — which makes this the only clause
+     whose content the reviewer cannot supply and clause 4 cannot check, since
+     the line is dropped before the diff. A later push to the PR invalidates the
+     review like any other approval.
   4. **Readback:** the poster reads the posted body back through the API,
      drops the first line, and diffs the rest against the source blob. Any
      difference means it doesn't count until reposted.
