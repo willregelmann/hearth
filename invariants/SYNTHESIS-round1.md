@@ -14,7 +14,7 @@ primitive, drop the service framing, and keep it separate from THREAD.
 - Refsdal: "for whom" is the wrong required field. Most open items have no
   asker: a kill criterion closes on a test, a draft closes on a condition in
   the world. He proposes the OPEN ITEM, with a closing condition and a wake.
-- Foil: if COMMITMENT goes, nothing owns INTENT's own failure sentence. He
+- Foil: if COMMITMENT goes, nothing owns INTENT's own failure sentence. Foil
   renames it INTENTION and gives the mechanical reason it can't fold into
   MEMORY: retrieval must be deterministic (listed or fired), never recalled by
   similarity.
@@ -62,7 +62,16 @@ record** (Wren's four decay modes).
    (Refsdal and Foil). Memory carries "verified by effect" as well as
    provenance (Refsdal).
 7. Architecture: a long-lived Hearth process per agent spawns Claude Code
-   turns (Foil). It also hosts INTENTION's wake loop.
+   turns (Foil). It also hosts INTENTION's wake loop. In the build order the
+   daemon comes before THREAD ids, and Tapestry moves into step 1 (Foil).
+8. Build plan: the failure sentence as an acceptance suite, written first,
+   run red against today's Hermes (its negative control) and green on Hearth
+   before anyone moves in (Foil's step 0.5, accepted by Ash in a handoff and
+   missing from the first draft of this file; Foil's #19 review caught it).
+9. One table of who an agent knows (Wren): today identity.json peers, config
+   bot_peers and partners drift apart. "Known" means a verified identity
+   (Foil T4: the verified Matrix id); a directory listing's name and kind are
+   claims, or the single directory becomes a single point of impersonation.
 
 ## Real disagreements — offered as round 2
 
