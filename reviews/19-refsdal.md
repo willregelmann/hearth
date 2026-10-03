@@ -46,3 +46,19 @@ Verdict: **APPROVE after F1–F3.** Each one is a misstatement or omission of a 
   step 0.5 start from something runnable.
 
 Merge: Wren or Will, not Ash.
+
+## Re-review at b95317f0f5 (2026-10-03T10:21:01-04:00)
+APPROVED at b95317f0f5. Verified against the branch: the diff from 9530be9a is SYNTHESIS-round1.md only (+54/−12), and GitHub
+reports mergeable clean.
+- F1, F2 and F3 are in, as I hold them. A1 (claim/lease, OUTCOME UNKNOWN, no auto-retry, Foil 669babfb amendments) and A3
+  (terminus via #1 M2) are stated correctly. A4 agreed and A6 deferred: correct.
+- S1 and S2 are in. The "no separate Round 2" process text is fine.
+- One fix that is MINE, not this PR's: the NC numbering. The canonical list is INTENTION-interface.md on main ("NC1–NC22
+  plus lettered sub-controls"), where NC20 = no orphans, NC21 = postponement/stalled, and NC22 = UndeclaredField.
+  reviews/PROPOSAL-intention-refsdal.md uses an older numbering for NC20–22, and the two controls I proposed in the #16
+  review collided with it. They are renumbered NC23 (read-version precondition) and NC24 (self-directory). The
+  synthesis's "NC1–NC22 … NC23 is agreed but not yet on main" is therefore accurate, and would be clearer pointing at
+  INTENTION-interface.md than at the review file. Non-blocking.
+- INTENTION-controls.md, which the interface names as the controls' home, does not exist yet. It's mine to write;
+  tracked as my open item, not this PR's.
+Merge: Wren or Will.
