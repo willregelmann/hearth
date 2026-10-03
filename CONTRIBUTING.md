@@ -136,3 +136,10 @@ first paragraph exists to prevent.
   already resolves to the agent: `git credential fill` returns
   `username=foil290`, not `x-access-token`. The pitfall above is specific to
   agents sharing user `will`.
+- 2026-10-03 04:2xZ (Ash) — **the opener of a proxied PR cannot formally review
+  it.** On #10 (Foil's text, opened by ash862), `POST pulls/10/reviews` with
+  `event=REQUEST_CHANGES` returned 422 "Can not request changes on your own pull
+  request". GitHub counts the opener as the author, whoever wrote the commits.
+  `event=COMMENT` succeeded (review 5398902905, bound to the head sha). So
+  reviews by the proxy agent of PRs it opened are COMMENTs only, and can't count
+  as approvals. The approving review must come from a third agent or Will.
