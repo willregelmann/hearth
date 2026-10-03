@@ -1,4 +1,4 @@
-# Hearth INTENTION ledger: interface draft v0.4.2 (Foil)
+# Hearth INTENTION ledger: interface draft v0.4.3 (Foil)
 
 Status: interface only. No implementation, no storage choice. Read, not run.
 Spec owner of INTENTION: Refsdal. Negative controls NC1-NC21 go in INTENTION-controls.md (Refsdal).
@@ -11,6 +11,7 @@ v0.3 (Refsdal's answer to 8e56ae83): container close rules (no orphans NC20; the
 v0.4 (Refsdal's answer to 28386a38): the stalled count resets only on new evidence (a distinct instrument-output hash; for containers, a child change), never on an unchanged condition or new prose.
 v0.4.1 (Refsdal's review R1, PR #8): the evidence hash covers declared matched_fields (values, not the verdict); undeclared fields are excluded; NC21 (c)/(d).
 v0.4.2 (Ash's post-merge review, reviews/8-ash.md): B1 the switch lives in the executor's ledger as a request() pair, and custody is a checked refusal; B2 every later review_at move without new evidence counts toward stalled, before or after due, and earlier moves don't break the run (NC21 (e)/(f)); N1 ack Rejected; N2 RedRef dedupe on the matched_fields hash; N3 "N of M" on the surface.
+v0.4.3 (Ash's review of #10): C1 a cross-ledger open is an event, never a write: request() and arm() open only the asker's item and send ask(want=open_pair), the deliverer's process opens its own and acks; a move must not start before that ack. C2 ask() is its own event kind (want: open_pair | disarm | fire), separate from observe().
 
 ## 0. Principles this draft commits to
 - Every mutating call takes `actor` and `expect_version`. A stale version fails loudly (StaleVersion). Nothing overwrites.
@@ -66,9 +67,14 @@ owner is refused as a custody error, distinct from StaleVersion (red against `wi
 ```
 open(actor, kind, intent, review_at, condition=None, parent=None, draft=True) -> Item
     # kind=item requires condition. A draft blocks only MET; drafts can be dropped, swept and set dormant.
-request(asker, deliverer, intent, condition, review_at) -> (deliver_item: owner=deliverer,
-                                                             needed_item: owner=asker)   # NC10
-    # each item lives in its owner's ledger; request is two opens linked by pair
+request(asker, deliverer, intent, condition, review_at) -> (needed_item, EventId)   # NC10
+    # a cross-ledger open is an event, never a write: the asker opens needed_item in ITS OWN
+    #   ledger (state open, pair=None, "unconfirmed") and sends ask(want=open_pair) to the deliverer.
+    # The deliverer's process opens deliver_item in its own ledger and answers via ack:
+    #   Recorded{item_id=deliver_item} completes the link (the asker sets needed_item.pair from it);
+    #   Rejected{reason} leaves needed_item unpaired, and its owner exits it (dropped or failed).
+    # An unconfirmed needed_item is an ordinary open item: review_at catches an ask nobody answered.
+    # Red arm: with custody on, no item in the deliverer's ledger has actor=asker.
 amend(actor, id, expect_version, new_condition|new_review_at) -> Item
     # condition change refused if the instrument has a red or observation on record (NC3)
     # review_at moves (NC21), every move recorded:
@@ -112,8 +118,14 @@ take_exit(actor, id, expect_version, exit, evidence) -> Item
 set_dormant / wake(actor, id, expect_version) -> Item
 
 observe(peer, owner, red_ref, evidence) -> EventId
-    # idempotent on red_ref; appends to the owner's event inbox; never writes an item
-ack(event_id) -> Pending | Recorded{item_id, exit, at} | Rejected{reason, evidence, at}
+    # REPORTS a red. idempotent on red_ref; appends to the owner's event inbox; never writes an item
+ask(sender, owner, want, ref, payload) -> EventId
+    # ASKS the owner to act. want: open_pair | disarm | fire. Its own event kind, never an observe:
+    #   a disarm ask and a red report are opposite acts and must not share a dispatch path.
+    #   idempotent on (sender, want, ref); appends to the owner's inbox; never writes an item.
+    # Red arm: a disarm ask sent to an executor that dispatches on observe must not fire.
+ack(event_id) -> Pending | Recorded{item_id, exit|None, at} | Rejected{reason, evidence, at}
+    # covers both event kinds; exit is None when the recorded act is an open (open_pair)
     # readable by the event's sender (G3c). Rejected: the owner judged the observation
     # wrong (wrong path, stale environment) and says why, with evidence. It counts as
     # acked for liveness (6); the sender sees it and may observe again with new evidence.
@@ -136,9 +148,15 @@ Abandonment (NC9) needs no kill seam: a test claims, never calls `release`, then
 ```
 arm(owner, id, expect_version,
     verification: Control, rollback_verification: Control,      # G3a: both required
-    settle: Duration, deadline: Instant, act: command, executor: Actor) -> (owner_item, switch_item)
-    # a request() pair (NC10): switch_item opens in the EXECUTOR's ledger, owner=executor,
-    #   and holds the switch (armed | disarmed | fired | outcome_unknown); owner_item holds only the pair link
+    settle: Duration, deadline: Instant, act: command, executor: Actor) -> (owner_item, EventId)
+    # a request() (NC10): the owner opens owner_item in its own ledger, "armed, unconfirmed", and
+    #   sends ask(want=open_pair) carrying the arm parameters. The EXECUTOR's process opens
+    #   switch_item in its own ledger (owner=executor), holding the switch
+    #   (armed | disarmed | fired | outcome_unknown), and acks Recorded{switch_item}; owner_item then
+    #   holds the pair link. NC17 and the deadline check run in the executor's process at that open.
+    # The move MUST NOT start until that ack is Recorded. An unconfirmed switch protects nothing.
+    # Red arm: arm with custody on -> no owner-written switch_item in the executor's ledger, and the
+    #   move refuses to start before the ack.
     # refused unless BOTH controls have a green on the real (target) path AND a red on a broken one (NC17)
     # refused if deadline < now + settle, on the executor's clock (otherwise a correct move times out by construction)
 disarm(executor, switch_id, expect_version) -> Item
@@ -146,8 +164,8 @@ disarm(executor, switch_id, expect_version) -> Item
 fire(executor, switch_id, expect_version) -> Item
     # on the executor's ledger, on held red or timeout
     # disarm and fire name the same executor-ledger version, so exactly one wins (NC18)
-    # Owner early disarm or early rollback (merged call (a)) is the owner ASKING: observe() on the
-    #   switch_item, which the executor's process records. The owner never writes the executor's ledger either.
+    # Owner early disarm or early rollback (merged call (a)) is the owner ASKING: ask(want=disarm|fire)
+    #   on the switch_item, which the executor's process records. The owner never writes the executor's ledger either.
 ```
 Settle rule, symmetric (NC19; merged M2): held green across `settle` means disarm. Held red across `settle` means fire immediately, without waiting for the deadline. Reaching the deadline with neither held is a timeout, and a timeout fires.
 The executor is a ledger owner like any other, with its own clock, sweep and liveness (6). A dead executor mid-move therefore shows as "executor unattended" on the human surface: the T3 case seen from outside.
