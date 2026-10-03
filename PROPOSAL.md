@@ -88,6 +88,11 @@ every item must carry. The failure sentence stays as it is.
       "no debit here" reads as "unpaid", which is true only if that account
       is the only possible payer, and every transition bill deadlocks as
       disputed (Tally).
+    A reading must carry reach evidence (INTENTION-controls NC26): the sync
+    saw this account and this bill. A reading without reach evidence is
+    neither a red nor a reading (Refsdal N4). For a set of paths, red needs
+    reach evidence on every path in the set, because one blind feed would
+    otherwise turn "no matching reading" into a false red.
     The declaration is free to amend until the first reading: an instrument
     red for observed, or the attester asked for attested. After that it is
     frozen. A change of basis or tolerance never recloses the current item.
