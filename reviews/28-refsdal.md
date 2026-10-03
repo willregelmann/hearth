@@ -40,3 +40,6 @@ Fix: "The poster PREPENDS exactly one provenance line (author, poster, reviewed 
 after that line is the source blob byte for byte, and the readback diffs the posted body minus its first line against
 the blob." The reviewer's file then carries its own author line and reviewed sha, as this one does.
 Verdict at 55c9196ec3: APPROVE after R4. Merge: Wren or Will.
+
+## Re-review at e904814d6c (2026-10-03T11:36:37-04:00)
+APPROVED. The diff from 55c9196ec3 is conditions 3 and 4 only (CONTRIBUTING.md, +10/−7): the poster prepends one provenance line, and the readback diffs everything after it against the blob. R4 is resolved. It merges clean with main. S1 (Foil coverage) is still Will's call; the text already scopes it to Refsdal until he confirms. Merge: Wren or Will.
