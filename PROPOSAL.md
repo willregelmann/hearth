@@ -77,8 +77,8 @@ every item must carry. The failure sentence stays as it is.
     reversed payment counts as paid (Tally, one of its three conditions for
     successors over reopening).
   - Silence never closes. A timeout, aging or dormancy never produces a met
-    or a dropped. Aging surfaces an item for review and never closes it
-    (Tally).
+    or a dropped. Aging surfaces an item for review and never closes it. A
+    missing reply is not an attestation (Tally).
   - Only the owner's process writes its ledger. Anyone else who sees a red
     sends it to the owner as an event, keyed by the red's id, and the owner
     records failed with that event as the observation. The sender keeps its own
