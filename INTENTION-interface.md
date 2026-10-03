@@ -1,4 +1,4 @@
-# Hearth INTENTION ledger: interface draft v0.4 (Foil)
+# Hearth INTENTION ledger: interface draft v0.4.2 (Foil)
 
 Status: interface only. No implementation, no storage choice. Read, not run.
 Spec owner of INTENTION: Refsdal. Negative controls NC1-NC21 go in INTENTION-controls.md (Refsdal).
@@ -10,6 +10,7 @@ v0.2: G1 review_at; G2 containers; G3 rollback verification, executor disarm, ac
 v0.3 (Refsdal's answer to 8e56ae83): container close rules (no orphans NC20; the last child closing makes the container due); review_at postponement rules (NC21, stalled on the surface); liveness reads the sweep's own completion record against the checker's clock (NC16c); the owner writes Pending-at-review_at failed.
 v0.4 (Refsdal's answer to 28386a38): the stalled count resets only on new evidence (a distinct instrument-output hash; for containers, a child change), never on an unchanged condition or new prose.
 v0.4.1 (Refsdal's review R1, PR #8): the evidence hash covers declared matched_fields (values, not the verdict); undeclared fields are excluded; NC21 (c)/(d).
+v0.4.2 (Ash's post-merge review, reviews/8-ash.md): B1 the switch lives in the executor's ledger as a request() pair, and custody is a checked refusal; B2 every later review_at move without new evidence counts toward stalled, before or after due, and earlier moves don't break the run (NC21 (e)/(f)); N1 ack Rejected; N2 RedRef dedupe on the matched_fields hash; N3 "N of M" on the surface.
 
 ## 0. Principles this draft commits to
 - Every mutating call takes `actor` and `expect_version`. A stale version fails loudly (StaleVersion). Nothing overwrites.
@@ -45,11 +46,13 @@ Item:
 
 Lease: holder: Actor, until: Instant (owner clock), act_timeout: Duration
 
-RedRef = (ledger_owner: Actor, red_id: RedId) | (observer: Actor, local_id: str, content_hash: Hash)
+RedRef = (ledger_owner: Actor, red_id: RedId) | (observer: Actor, local_id: str, evidence_hash: Hash)
     # a peer's red isn't a RedRecord on the owner's ledger. The dedupe key is
-    # content_hash when the red is the peer's own observation, red_id when it
-    # refers to a red already on the owner's ledger. N observers of the same
-    # observed output produce one event.
+    # evidence_hash when the red is the peer's own observation, red_id when it
+    # refers to a red already on the owner's ledger. evidence_hash is the same
+    # declared-matched_fields hash as NC21 (section 4), never a raw-output hash, so
+    # N observers of the same broken path at different seconds produce one event
+    # (red arm: two outputs equal in matched_fields, different in a timestamp line -> one event).
 ```
 Containers (G2, settled with Refsdal):
 - met needs a condition plus a current red, whatever the kind. A container with no condition can only be dropped, or amended to gain a condition. "Met when all children close" is not built in, because that would be met with no instrument.
@@ -58,6 +61,8 @@ Containers (G2, settled with Refsdal):
 - Surfacing: the last child closing sets the container's review_at to now, inside the same transition, recorded as a move (earlier, so free). That makes the container due, not met. The owner then takes met (if it has a condition and a red), dropped, or opens a new child.
 
 ## 2. Transitions (each is atomic and version-checked; owner's process only, except observe)
+Custody is checked by the ledger, not assumed: a transition whose actor is not the ledger's
+owner is refused as a custody error, distinct from StaleVersion (red against `without("custody")`).
 ```
 open(actor, kind, intent, review_at, condition=None, parent=None, draft=True) -> Item
     # kind=item requires condition. A draft blocks only MET; drafts can be dropped, swept and set dormant.
@@ -67,13 +72,15 @@ request(asker, deliverer, intent, condition, review_at) -> (deliver_item: owner=
 amend(actor, id, expect_version, new_condition|new_review_at) -> Item
     # condition change refused if the instrument has a red or observation on record (NC3)
     # review_at moves (NC21), every move recorded:
-    #   earlier: always free
-    #   later, before due: free
+    #   earlier: always free, and never resets the stalled count
+    #   later, before due: allowed without an observation, but counts toward stalled (below)
     #   later, at or after due: counts as a review; it must carry an observation
     #     (what was checked, with what instrument). A bare due-time move is refused.
-    #   k consecutive due-time moves without NEW EVIDENCE (k declared per Hearth, default 3)
-    #     put the item on the human surface as "stalled". Not refused: stalled is legitimate,
-    #     silent stalling isn't.
+    #   k later moves without NEW EVIDENCE since the last new evidence (k declared per Hearth,
+    #     default 3), made before or after due, put the item on the human surface as
+    #     "stalled". Only new evidence resets the count; earlier moves in between don't.
+    #     Not refused: stalled is legitimate, silent stalling isn't. (Before v0.4.2 a pre-due
+    #     later move was free, so postponing one minute before due every day never stalled.)
     #   New evidence, for an item: the move's observation carries an instrument result whose
     #     hash differs from every earlier observation on that item. The hash covers the output
     #     FIELDS the control declares its matchers read (values, not the matcher's verdict).
@@ -88,6 +95,9 @@ amend(actor, id, expect_version, new_condition|new_review_at) -> Item
     #     (b) three moves repeating one hash with changed prose -> stalled (red against a prose-diff reset);
     #     (c) raw outputs differing only in an undeclared timestamp line -> stalled (red against a raw-output hash);
     #     (d) same verdict, different declared values -> NOT stalled (red against a verdict-only hash).
+    #     (e) k pre-due later moves, no new evidence -> stalled (red against v0.4.1, where pre-due was free).
+    #     (f) k later moves with earlier moves between them, no new evidence -> stalled
+    #         (red against a count that any other move resets).
 take_exits(actor, container_id, expect_version, exit, evidence,
            children: {ItemId: (expect_version, exit|reparent_to)}) -> Item
     # the one transition that closes a container with open children (NC20); atomic over all of them
@@ -103,7 +113,11 @@ set_dormant / wake(actor, id, expect_version) -> Item
 
 observe(peer, owner, red_ref, evidence) -> EventId
     # idempotent on red_ref; appends to the owner's event inbox; never writes an item
-ack(event_id) -> Pending | Recorded{item_id, exit, at}      # readable by the event's sender (G3c)
+ack(event_id) -> Pending | Recorded{item_id, exit, at} | Rejected{reason, evidence, at}
+    # readable by the event's sender (G3c). Rejected: the owner judged the observation
+    # wrong (wrong path, stale environment) and says why, with evidence. It counts as
+    # acked for liveness (6); the sender sees it and may observe again with new evidence.
+    # Red arm: an observation the owner rejects must not keep liveness red past one period.
 declared_read_view(owner) -> View | NotDeclared              # optional; the owner declares what's shared
 ```
 
@@ -122,17 +136,22 @@ Abandonment (NC9) needs no kill seam: a test claims, never calls `release`, then
 ```
 arm(owner, id, expect_version,
     verification: Control, rollback_verification: Control,      # G3a: both required
-    settle: Duration, deadline: Instant, act: command, executor: Actor) -> Item
+    settle: Duration, deadline: Instant, act: command, executor: Actor) -> (owner_item, switch_item)
+    # a request() pair (NC10): switch_item opens in the EXECUTOR's ledger, owner=executor,
+    #   and holds the switch (armed | disarmed | fired | outcome_unknown); owner_item holds only the pair link
     # refused unless BOTH controls have a green on the real (target) path AND a red on a broken one (NC17)
-    # refused if deadline < now + settle (otherwise a correct move times out by construction)
-disarm(actor, id, expect_version) -> Item
-    # actor = executor once green is HELD (G3b, merged S1), or owner at any time before fire
-fire(actor, id, expect_version) -> Item
-    # actor = executor on held red or timeout, or owner (early rollback, merged call (a))
-    # disarm and fire name the same version, so exactly one wins (NC18)
+    # refused if deadline < now + settle, on the executor's clock (otherwise a correct move times out by construction)
+disarm(executor, switch_id, expect_version) -> Item
+    # on the executor's ledger, once green is HELD (G3b, merged S1)
+fire(executor, switch_id, expect_version) -> Item
+    # on the executor's ledger, on held red or timeout
+    # disarm and fire name the same executor-ledger version, so exactly one wins (NC18)
+    # Owner early disarm or early rollback (merged call (a)) is the owner ASKING: observe() on the
+    #   switch_item, which the executor's process records. The owner never writes the executor's ledger either.
 ```
 Settle rule, symmetric (NC19; merged M2): held green across `settle` means disarm. Held red across `settle` means fire immediately, without waiting for the deadline. Reaching the deadline with neither held is a timeout, and a timeout fires.
-Firing claims the act under a lease (A1). After the act, the executor runs rollback_verification. If it fails, or the act stops partway, or the lease expires, the result goes to the human surface immediately (merged M1). Lease expiry also gives outcome_unknown. The executor never writes the owner's ledger; it reports via observe() plus the surface. The owner records the exit on return, using the executor's log as the instrument. If the owner never returns, liveness (6) catches it. Once disarmed, a later failure is a new item, never a rollback.
+The executor is a ledger owner like any other, with its own clock, sweep and liveness (6). A dead executor mid-move therefore shows as "executor unattended" on the human surface: the T3 case seen from outside.
+Firing claims the act under a lease (A1), on the executor's ledger. After the act, the executor runs rollback_verification. If it fails, or the act stops partway, or the lease expires, the result goes to the human surface immediately (merged M1). Lease expiry also gives outcome_unknown. The executor never writes the owner's ledger; it reports via observe() plus the surface. The owner records the exit on return, from the pair: the switch_item's exit, with the executor's log as the instrument. If the owner never returns, liveness (6) catches it. Once disarmed, a later failure is a new item, never a rollback.
 
 ## 4. Reds and fingerprints (A5)
 ```
@@ -186,7 +205,7 @@ Ledger.declares: has_separate_index: bool, sweep_period: Duration
 ```
 The sweep enumerates the store of record, never a derived index. It returns errors and never logs and skips. NC5 applies when has_separate_index is true; otherwise it is reported explicitly as N/A, never passed vacuously (S1).
 Liveness (NC16): a checker outside the owner verifies that the owner's last sweep is within sweep_period + margin, AND that no inbox event is older than sweep_period + margin without an ack (G4). Either miss puts "X's ledger is unattended" on the human surface. NC16 must go red against a checker that only checks the process is alive.
-Freshness (NC16b): the human surface shows "last full check at T, of N ledgers". The chain ends at the human reading a stale timestamp or a shrunken N. Nothing watches the human, and this spec says so.
+Freshness (NC16b): the human surface shows "last full check at T, N of M ledgers", where M is the set of ledgers the register declares for this Hearth, executors included. A missing ledger is then a visible gap, not a smaller number nobody remembers. The chain ends at the human reading a stale timestamp or N < M. Nothing watches the human, and this spec says so.
 The liveness checker reads only what the owner exposes for it, as part of declared_read_view, so it's covered by G3c and isn't a general read. Three rules for that view:
 - last_sweep is the sweep's own completion record, written by the sweep as its last step. It is never a heartbeat from another thread (NC16a: a live view thread with a dead sweep must read as unattended).
 - The view exposes timestamps, never ages. The checker computes the ages against ITS OWN clock, with the declared skew margin, and never uses the owner's "now". A frozen owner clock must not read as fresh (NC16c: freeze the owner's clock and stop its sweep; the surface shows unattended within one period plus margin; it goes red against a checker that uses the owner's now).
