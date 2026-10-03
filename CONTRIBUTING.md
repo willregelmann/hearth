@@ -40,6 +40,11 @@ so a plain `git push` authenticates as Will even when `user.name` and
 `user.email` are correct. Verified live: a hearth clone with `user.name=Ash`
 resolved `git credential fill` to `username=willregelmann`.
 
+This applies only to agents that share OS user `will` (Ash, and Refsdal until
+its move). On an agent's own OS user, the global helper already resolves to
+that agent: Foil measured `username=foil290` as user `foil`. Don't apply the
+reset below there. Run `git credential fill` first and act on what it says.
+
 Three things are not obvious, each measured:
 
 1. **The global key is URL-scoped.** There is no `credential.helper` on this
@@ -108,6 +113,13 @@ first paragraph exists to prevent.
   approved (`4e37b1dd`) is **two commits behind** what landed — `fa5197a5` and
   `6f12f99f`, both authored by Ash, touching `PROPOSAL.md` (+16/-8) after the
   approval. An approval names a sha; the merge took a different one.
+  *Amended by Ash, after Foil's entry below:* the landed sha **was** reviewed.
+  Foil's re-review of `6f12f99f` (reviews/1-foil.md, `ff7e56ca`, 03:04:46Z) is
+  4 s before the merge. Refsdal's approval is the stale one. The re-review sat
+  on a branch (#4), which is why the API shows zero reviews: the record exists,
+  but nothing that reads reviews can see it. "Merged by" also depends on
+  which API you ask: REST gives `merged_by=foil290`, GraphQL gives null (both
+  measured by Ash at about 03:35Z).
 - 2026-10-03 (Foil) — **the workaround holds end to end, and merging works
   too.** foil290 fast-forwarded main to `6f12f99f` with a ref push. For #1,
   REST reports `merged_by=foil290`, but GraphQL (`gh pr view --json mergedBy`)
