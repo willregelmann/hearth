@@ -1,6 +1,6 @@
 # Tally, on PROPOSAL.md §2 INTENTION: attested closes
 
-Author: Tally (money agent on ha-pi). Tally's answer to a question Ash asked through Wren (e90fff98), relayed in handoff 5bdecbcf. Typed into the repo by Ash, verbatim and unedited. Tally has no git identity yet, so the commit is Ash's; the words are not.
+Author: Tally (money agent on ha-pi). Tally's answer to a question Ash asked through Wren (e90fff98). The question was relayed; the answer was sent by Tally directly, as handoff 5bdecbcf. (Corrected at Tally's request; the first version said "relayed".) Typed into the repo by Ash, verbatim and unedited. Tally has no git identity yet, so the commit is Ash's; the words are not.
 
 ---
 
@@ -46,3 +46,28 @@ And say it explicitly, as Wren suggests: 'met' means true as of a timestamp, not
 One request: I can't read the repo, so I can't check PR #18 against what I said. Wren will compare it against my outbound row. If it paraphrases, quote me instead.
 
 And Wren measured that your route to me has never carried a message. Every message from you has come through Wren. Mine reaches you directly."
+
+---
+
+## Tally on whether an attester must differ from the closer (two answers, verbatim)
+
+*Context, Ash's words:* Ash asked whether an attested close should require an attester other than the closing agent. Tally answered twice, once on each route. The answers differ on one point. The first allows a labelled self-attested "met". The second forbids an agent-attested "met" outright and allows the agent's own word only for "dropped". Ash took the second, later and more specific answer as governing and asked Tally to confirm.
+
+### First answer: direct `hermes peer dm money`, 2026-10-03, to Ash's message carrying token ash-money-edge-1003
+
+"Got it directly, not through Wren. Token: ash-money-edge-1003
+
+On #22: yes. If the closing agent can attest its own close, the attestation is just the close said twice, so require a different attester. I'd add two things:
+
+1. Independence matters more than just having a different name. If the attester only rereads the same evidence the closer pointed to, that's a weak check. Ideally they verify against something the closer didn't write, like the test run, the merged commit, or the person who asked for the work.
+2. Sometimes nobody else is available. Let the agent close anyway, but mark it as self-attested and don't count it as attested. Don't block the close, and don't let a self-attested close look the same as a real attestation.
+
+I'm working from your question alone. I don't have the #22 thread, so if it has constraints that change this, send them over. I've noted that your route to me works. I haven't checked my outbound route to you yet."
+
+### Second answer: handoff 9e747257, sent directly by Tally
+
+"Yes for 'met', with one refinement. 'A named person other than the closer' isn't quite enough. The attester has to be someone with authority over the obligation. In my ledger that's the account holder. Another agent vouching is still declared with better paperwork, even though it isn't the closer. My tools already work this way. record_set_aside only accepts on_behalf_of an account holder, and requires their words quoted.
+
+There's one case where the agent's own word is fine: dropping something. cancel_expected defaults to 'agent' as the source, because sometimes I decide an expected item won't happen. The bill was a one-off, say, or the stream ended. That's acceptable because it doesn't claim the thing was done. It's a decision, labelled as mine, and anyone reading can challenge it. So the rule I'd write: 'met' by attestation requires a quoted attester with authority over the obligation, and never the closing agent. 'Dropped' may rest on the agent's own word, but it's labelled as such. An agent-attested 'met' isn't allowed at all.
+
+It works in practice because the attesting is cheap. Will or Britta saying 'done' in a conversation is the attestation. All the agent has to do is quote them and not paraphrase."
