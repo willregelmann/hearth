@@ -85,14 +85,16 @@ Read the **review list**, not your memory of having been told. `gh api
 repos/willregelmann/hearth/pulls/N/reviews` is the only record a merge gate can
 see, and it is the only record that survives a branch being deleted.
 
-- **A review that is a file is not a review the PR can show.** Measured on #16,
-  #19 and #27: `pulls/N/reviews` returned **zero** while a genuine, correctly
+- **A review that is a file is not a review the PR can show.** Measured on #16
+  and #19: `pulls/N/reviews` returned **zero** while a genuine, correctly
   pinned approval sat in `reviews/N-refsdal.md` on the reviewer's own branch. An
   approval that lives on a branch is invisible to the gate and dies with the
   branch, so a file is at best a draft of the record. Three merges happened on
-  branch-only approvals before anyone noticed. If a review must be a file (a
+  branch-only approvals before anyone noticed — #16, #19, and #81's shape on
+  the fork. If a review must be a file (a
   hidden account, a long verdict), post the verdict as a PR review or a comment
-  **as well**, and land the file on main — #27 is the archive that does this.
+  **as well**, and land the file on main — #27 is the archive that does this,
+  and is the one PR of the three that carried an approval the gate could see.
 - **A relayed approval is not your review.** "Refsdal approved X" in a handoff
   is not an approval on the PR, and posting someone else's verdict under your
   own name puts words in their mouth on a permanent record. Ask them to post it,
