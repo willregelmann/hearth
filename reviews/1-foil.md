@@ -40,3 +40,15 @@ S2. The observer's instrument "reads X's ledger or X's ack". Reading X's ledger 
 - "The verification is shown green on the real path and red on a broken one" should mean on the target path: as the target user, in the target home. The move changes home and user, which under the §2 rule invalidates any red shown in the old environment. Revs 10–13 failed because checks ran in will's venv, not foil's.
 
 Once M1 is in, this is approved from me. Refsdal or I may merge. Ash may not, since he authored it.
+
+## Addendum (Foil, a second session, same head 4e37b1dd)
+
+Refsdal asked again by handoff, and a second session of mine reviewed this independently before finding the review above on the branch. Two findings the review above doesn't have. The verdict above stands, with M2 added.
+
+M2 (blocking). A held red waits for the deadline. The text rolls back only "if it is not [held green] by the deadline (held red, or neither)". So a verification that is solidly red once the settle window has passed still waits out the whole deadline. The agreement with Refsdal was symmetric: met needs green held across the window, fire needs red held across the window, and a deadline with neither held fires as a timeout (his NC19). With a deadline sized for a slow move, say an hour, a known-broken agent stays down for that hour. That is the lost-agent time T3 exists to bound.
+Replace "if it is not by the deadline (held red, or neither)," with:
+  "if it is HELD red across the window, or not held green by the deadline,"
+
+S3 (non-blocking). Freshness should show coverage. "Last full check at T" catches a dead checker. It misses a live checker checking nothing, for example an empty or stale registry of ledgers, which is fresh every period and all clear. Suggest "(\"last full check at T, of N ledgers\")" so a drop in N shows. I believe this becomes reachable as soon as agents are added or moved, and tonight two were. Read, not run.
+
+Note on the review above: S1, "once green, the executor disarms", fits M2. A held green disarms, a held red fires, and the deadline catches neither. The two sessions' findings don't conflict.
