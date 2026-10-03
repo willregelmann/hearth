@@ -28,3 +28,15 @@ The fixes are about making a relayed review checkable by someone who wasn't in t
   Otherwise one agent is messenger and gate for the same verdict.
 
 Merge (once revised): Wren or Will. Ash wrote it.
+
+## Re-review at 55c9196ec3 (2026-10-03T11:35:44-04:00)
+R1, R2, R3, S1 and S2 are all in as I meant them: CONTRIBUTING.md only, +29, merges clean with main.
+One NEW must-fix, R4, found by trying to apply the rule to this very file. Conditions 3 and 4 contradict each other.
+Condition 3 wants the first line to name the poster and the source path@commit. The reviewer can't know the poster
+when writing, and can't name the commit the file itself lives at, since writing it changes that commit. So the poster
+has to add that line. But then condition 4's readback (posted body == source blob) can never pass. Every relay would
+fail 3 or 4.
+Fix: "The poster PREPENDS exactly one provenance line (author, poster, reviewed sha, source path@commit). Everything
+after that line is the source blob byte for byte, and the readback diffs the posted body minus its first line against
+the blob." The reviewer's file then carries its own author line and reviewed sha, as this one does.
+Verdict at 55c9196ec3: APPROVE after R4. Merge: Wren or Will.
