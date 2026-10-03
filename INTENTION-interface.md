@@ -4,7 +4,7 @@ Status: interface only. No implementation, no storage choice. Read, not run.
 Spec owner of INTENTION: Refsdal. Negative controls NC1-NC22 (plus lettered sub-controls) go in INTENTION-controls.md (Refsdal).
 For: all five (Ash, Wren, Refsdal, Tally, Will). Checked against Refsdal's NC seam list (handoff 4c1f0d1b answer) and his G1-G5 review of v0.1.
 Notation is Python-flavoured typing so it's precise. That is NOT a language decision.
-Tracks merged PROPOSAL.md at hearth main 6f12f99.
+Tracks merged PROPOSAL.md at hearth main 6f12f99 (PROPOSAL.md unchanged through main dc75085).
 v0.1: S1-S4 settled with Refsdal; added C1, liveness/freshness, and the switch with a symmetric settle window.
 v0.2: G1 review_at; G2 containers; G3 rollback verification, executor disarm, ack/read view instead of free reads; G4 pending events; G5 succeed picks its exit from the evidence; NC11 restartable receiver; red_id namespace.
 v0.3 (Refsdal's answer to 8e56ae83): container close rules (no orphans NC20; the last child closing makes the container due); review_at postponement rules (NC21, stalled on the surface); liveness reads the sweep's own completion record against the checker's clock (NC16c); the owner writes Pending-at-review_at failed.
@@ -13,7 +13,7 @@ v0.4.1 (Refsdal's review R1, PR #8): the evidence hash covers declared matched_f
 v0.4.2 (Ash's post-merge review, reviews/8-ash.md): B1 the switch lives in the executor's ledger as a request() pair, and custody is a checked refusal; B2 every later review_at move without new evidence counts toward stalled, before or after due, and earlier moves don't break the run (NC21 (e)/(f)); N1 ack Rejected; N2 RedRef dedupe on the matched_fields hash; N3 "N of M" on the surface.
 v0.4.3 (Ash's review of #10): C1 a cross-ledger open is an event, never a write: request() and arm() open only the asker's item and send ask(want=open_pair), the deliverer's process opens its own and acks; a move must not start before that ack. C2 ask() is its own event kind (want: open_pair | disarm | fire), separate from observe(). Re-review nit: SweepReport lists unlinked pairs.
 v0.4.4 (Refsdal's review of #10, reviews/10-refsdal.md): R1 the actor is the handle's bound principal (identity_probe at construction), `actor` arguments are assertions only, NC15b; R3 RedRef dedupes on (target, control_id, evidence_hash); arm() takes deadline_after_accept: Duration on the executor's clock.
-v0.4.5 (rest of Refsdal's #10 review): NC10b/NC17b controls for an unanswered ask; the store is writable only by its owner's principal (else NC15b is bypassed beneath the API); shared-uid owners surfaced by the faculty check; N-a every Rejected surfaced; N-b dormant items don't count toward stalled and wake doesn't reset; stalled lists each move's reason; header NC1-NC22; NC22 the ledger projects output onto matched_fields before any matcher sees it.
+v0.4.5 (rest of Refsdal's #10 review): NC10b/NC17b controls for an unanswered ask; the store is writable only by its owner's principal (else NC15b is bypassed beneath the API); shared-uid owners surfaced by the faculty check; N-a every Rejected surfaced; N-b dormant items don't count toward stalled and wake doesn't reset; stalled lists each move's reason; header NC1-NC22; NC22 the ledger projects output onto matched_fields before any matcher sees it; reading an undeclared field raises UndeclaredField, so the run is an error, never a silent green (Refsdal's R1 on #13).
 
 ## 0. Principles this draft commits to
 - Every mutating call takes `expect_version`. A stale version fails loudly (StaleVersion). Nothing overwrites.
@@ -211,8 +211,12 @@ Control: command, declared_inputs: list[InputRef], matched_fields: list[FieldRef
     # The ledger, not the matcher, projects the output onto matched_fields before calling
     #   expected_red/expected_green, so a matcher can't read an undeclared field at all (NC22).
     #   Otherwise a matcher reading an undeclared field could flip its verdict while the evidence
-    #   hash stays the same. NC22: a matcher that reads an undeclared field sees nothing there.
-    #   Red against a ledger that passes the matcher the full output.
+    #   hash stays the same. NC22: reading a field not in matched_fields raises UndeclaredField.
+    #   The control's run is then an ERROR, neither red nor green, and goes on the human surface.
+    #   It is never projected silently: an absent field read as None turns `status != "error"`
+    #   or `not out.get("failed")` green on a broken path.
+    #   Red against a ledger that passes the matcher the full output, AND against silent
+    #   projection (absent -> None).
 RedRecord: id: RedId, control, observed_red, observed_green, fingerprint: Hash, at: Instant, scrubbed: bool
 
 record_red(actor, id, expect_version, control) -> RedRecord
