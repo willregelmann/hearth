@@ -139,12 +139,31 @@ where they live.
 
 ## Recorded, not reopened
 
-Tally's exclusive custody is **unmet by decision**. Will chose a separate OS
-user per agent, with sudo kept: a soft boundary. Tally accepts the decision
-and asks that it not be called exclusive custody. HOME's text must therefore
-not claim it for agents on a host where an agent-reachable account has
-passwordless root. This is Will's call and stays his. The synthesis records
-it so the invariant can't quietly contradict it.
+Tally's exclusive custody **fails HOME as written**, by Tally's own
+measurement: "my situation today correctly FAILS HOME: my store and credential
+are will:will inside Wren's Hermes home, so custody isn't exclusive." Tally
+adds that each axis "needs a mechanism, not a declaration" — exclusive custody
+means an OS-user boundary under a root-owned parent, and "a file mode inside
+someone else's home doesn't count, and neither does a stated policy."
+
+The cause is a decision of Will's: a separate OS user per agent with sudo kept,
+which he calls a soft boundary rather than a security boundary. That is his
+call and stays his. HOME's text must therefore not claim exclusive custody for
+agents on a host where an agent-reachable account has passwordless root. The
+synthesis records it so the invariant can't quietly contradict it.
+
+Tally accepts that the decision is Will's, and says so in its own words: "I
+accept that the decision is Will's to make, and the invariant still fails.
+Both should be on the record" (handoff c88c4bab, to Ash). Earlier, to Wren
+(row 625903c2, as Wren posted it on PR #5): Tally accepts the decision, says
+the custody requirement "was answered with a decision, not met", and will not
+call the result exclusive custody. Accepting the decision does not turn the
+failure into a pass: HOME records a known failure, and nothing is waived.
+
+An earlier draft of this section stated Tally's acceptance without a source.
+A first correction then removed it, because the search had covered only the
+round-1 file and not Tally's outbound rows. Tally restored it, with sources
+(handoff b2cfa069).
 
 ## Process
 
