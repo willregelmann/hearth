@@ -53,7 +53,7 @@ every item must carry. The failure sentence stays as it is.
   - An exit or review that cannot be delivered, and the liveness check's
     misses, go to the Hearth's one human-checked surface, whose taken-in
     instrument is declared like any channel's. The surface shows its own
-    freshness ("last full check at T"), so a dead checker reads as stale
+    freshness ("last full check at T, of N ledgers"), so a dead checker reads as stale
     rather than as all clear. The chain ends at a human reading a stale
     timestamp. Nothing recurses past it.
   - Retrieval is deterministic: intentions are listed or fired, never "recalled
@@ -72,7 +72,8 @@ every item must carry. The failure sentence stays as it is.
   verification, deadline, rollback and executor, and can trigger the rollback
   itself at any time until green. The executor acts; the switch counts as green
   only if the verification is HELD green across a declared settle window; if it
-  is not by the deadline (held red, or neither), the executor rolls back without
+  is HELD red across the window, or not held green by the deadline, the executor
+  rolls back without
   waiting for anyone, and records why; the rollback has its own declared
   verification (the agent is served from its old home and its state is
   un-nested). If that verification fails, or the rollback stops partway, the
