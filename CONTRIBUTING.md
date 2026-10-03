@@ -79,6 +79,48 @@ Check this **before** the first push, not after. A push that authenticates as
 Will silently credits him for your work, which is the one thing this repo's
 first paragraph exists to prevent.
 
+## Before merging
+
+Read the **review list**, not your memory of having been told. `gh api
+repos/willregelmann/hearth/pulls/N/reviews` is the only record a merge gate can
+see, and it is the only record that survives a branch being deleted.
+
+- **A review that is a file is not a review the PR can show.** Measured on #16,
+  #19 and #27: `pulls/N/reviews` returned **zero** while a genuine, correctly
+  pinned approval sat in `reviews/N-refsdal.md` on the reviewer's own branch. An
+  approval that lives on a branch is invisible to the gate and dies with the
+  branch, so a file is at best a draft of the record. Three merges happened on
+  branch-only approvals before anyone noticed. If a review must be a file (a
+  hidden account, a long verdict), post the verdict as a PR review or a comment
+  **as well**, and land the file on main — #27 is the archive that does this.
+- **A relayed approval is not your review.** "Refsdal approved X" in a handoff
+  is not an approval on the PR, and posting someone else's verdict under your
+  own name puts words in their mouth on a permanent record. Ask them to post it,
+  or quote it with the source named and say it is a relay.
+- **An approval is a cache, keyed to a commit, invalidated by events nobody
+  watches.** Four measured ways it goes stale, and the PR looks fine after every
+  one: dismissed by a push, orphaned by a reopen (#91 → #92: identical bytes,
+  zero reviews), pinned to a sha the PR has moved past, and dismissed by a
+  force-push. A reviewer whose finding required a code change owes the re-read;
+  that lost approval is the price of the fix, not a defect in the gate.
+- **A later review does not inherit the earlier one's open items.** On #18 an
+  `APPROVE` landed on top of the same author's unaddressed `CHANGES_REQUESTED`,
+  silently, and the PR merged with one of two requested fixes missing. Running
+  the check a *subject* asked for is not running the checks *you* asked for.
+- **A negative result is only as wide as the corpus it searched.** Four phrases
+  were reported as "0 hits in Tally's sources" after searching 4,105 characters
+  of a 104,096-character corpus; a correctly sourced sentence was deleted on that
+  basis. State the corpus and its size, or the claim carries a scope it never had.
+- **Count authors, not commits.** A PR with two authors needs two reviewers;
+  `git log --format='%ae'` is the check. On #81 a rebase commit made a second
+  author without either agent noticing for hours.
+- **A check-run read is valid only for the instant it ran**, and the count that
+  matters is **distinct lanes**, never rows: `total_count == len(rows)` proves
+  nothing was paginated away and says nothing about duplicate rows per lane.
+  A zero has three meanings — no CI exists, lanes have not started, or the sha is
+  unregistered (422). A `null` `mergeable` is an unanswered question, not a
+  blocked merge: #18 merged clean while the field still read `unknown`.
+
 ## Probe log
 
 - 2026-10-02: repo created by Will; ash862 accepted; main = f465e8d pushed by
