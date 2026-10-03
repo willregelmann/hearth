@@ -30,11 +30,30 @@ every item must carry. The failure sentence stays as it is.
   whole):
   - A *container* has a named owner, a required review date and an optional
     condition. An *item* has a condition whose instrument has been shown to go
-    red on the same path. Until then the item is a draft and cannot be met. A
+    red on the same path. Until then the item is a draft and cannot be met by
+    observation. A
     red qualifies its path until the path changes; a change of home, user, host
     or installed version counts as a change.
-  - States: active and dormant. Exits: met (observation + instrument), dropped
-    (reason; superseded = dropped with a pointer to the successor), failed.
+  - States: active and dormant. Exits: met, dropped (reason; superseded =
+    dropped with a pointer to the successor), failed.
+  - Every met or dropped records its *basis*, and who supplied it (Tally):
+    - *observed*: an observation plus the instrument above. Only an observed
+      close claims the instrument property.
+    - *attested*: a named person's word, recorded with whose word it was and
+      when ("set aside in cash", "we cancelled it"). An attested close is
+      labelled as such wherever it is shown and never claims the instrument
+      property. Without this branch some real commitments can never close, or
+      agents invent instruments to close them, which brings back *declared*
+      disguised as *observed*.
+  - When sources disagree, the ledger records both readings. The named
+    authority wins and is labelled. The losing reading is never overwritten,
+    because the disagreement is itself an observation. A source that is badly
+    off is something to look into, not only something to correct.
+  - *Met* means true as of its timestamp, not permanently. A closed entry is
+    never edited. A reversal (a returned payment, say) is its own entry. The
+    original keeps its met record and is marked reversed, with a pointer. A
+    successor opens with the same obligation and points back. Anything asking
+    "is this settled?" reads the head of the chain, never a reversed original.
   - Only the owner's process writes its ledger. Anyone else who sees a red
     sends it to the owner as an event, keyed by the red's id, and the owner
     records failed with that event as the observation. The sender keeps its own
