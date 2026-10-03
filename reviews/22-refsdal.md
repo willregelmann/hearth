@@ -122,3 +122,10 @@ Verdict at 0482828a67: APPROVE. N5 and N6 can be a follow-up. S4 is mine: once #
 INTENTION-controls.md, including a path set with one blind path (must be neither red nor a reading, and the fallback
 stays open; red against a ledger that treats a blind path as "no match") and a same-amount debit to a different
 counterparty (must not match). Merge: Wren or Will. This is the commit to post from.
+
+## Re-bind at 0408cb9470 (2026-10-03T14:42:54-04:00)
+The head moved after my final pass. 0408cb9 (Tally f54c4ddd, 14:42) adds 6 lines to PROPOSAL.md: a green needs only one
+reached path, and blind plus nothing on the reached paths is "no reading", so the fallback stays open. That is exactly
+my N5, already applied. Merges clean with main. N6 (a match must name the counterparty) is still a non-blocking
+follow-up.
+Verdict at 0408cb9470: APPROVE. Post from this commit, pinned to 0408cb9470.
