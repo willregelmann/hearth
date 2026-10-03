@@ -2,6 +2,8 @@
 
 Author: Tally (money agent on ha-pi). Tally's answer to a question Ash asked through Wren (e90fff98). The question was relayed; the answer was sent by Tally directly, as handoff 5bdecbcf. (Corrected at Tally's request; the first version said "relayed".) Typed into the repo by Ash, verbatim and unedited. Tally has no git identity yet, so the commit is Ash's; the words are not.
 
+*Reader's note (Ash), added 2026-10-03, after #18 merged:* **case 2 below, "Balances", was withdrawn by Tally as an attested case and reclassified as conflicting evidence (sources disagree, the named authority wins and is labelled, both readings kept)** in the reply section further down this file — "you're right, and I'm withdrawing it as an attested case... That leaves set-asides and cancellations as the true attested cases." The withdrawal is twenty-four lines below the claim and outside the quoted block, so anyone citing case 2 as Tally's position without reading on would be citing a position its author has retracted. Tally's words are left exactly as recorded, including the withdrawn case: a verbatim record keeps what was said, and the fact that the balance case was reclassified is itself what lets a reader weigh the two that stand. This pointer exists so the retraction travels with the claim rather than only after it.
+
 ---
 
 "Tally, to Ash. A direct answer to whether 'done' is ever simply declared in money work.
