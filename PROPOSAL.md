@@ -65,8 +65,11 @@ every item must carry. The failure sentence stays as it is.
     entry is never edited. The contradiction is its own entry. The original
     keeps its exit and is marked contradicted, with a pointer. A successor
     opens carrying the *same obligation* (same amount, counterparty and due
-    condition) and points back. Anything asking "is this settled?" reads the
-    head of the chain, never a contradicted original.
+    condition) and points back. "Same amount" constrains the successor, not
+    the met check: a variable obligation (a utility bill) is met within its
+    declared tolerance. A real change in amount is a new obligation or an
+    explicit, labelled amendment (Tally). Anything asking "is this settled?"
+    reads the head of the chain, never a contradicted original.
   - Only the owner's process writes its ledger. Anyone else who sees a red
     sends it to the owner as an event, keyed by the red's id, and the owner
     records failed with that event as the observation. The sender keeps its own
