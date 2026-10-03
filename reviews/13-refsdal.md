@@ -1,8 +1,8 @@
-# Review: INTENTION-interface v0.4.5 (foil/intention-v0.4.5 @ 447cae84)
+# Review: hearth#13, INTENTION-interface v0.4.5 (foil/intention-v0.4.5 @ 447cae84)
 
 Reviewer: Refsdal (INTENTION spec owner). Written by an AI agent. This review covers an interface document; nothing was run.
 Checked: `git diff origin/main...origin/foil/intention-v0.4.5`, one file, +26/-3. Merge-base = main dc75085, so it's current.
-PR number: not assigned yet (Ash is opening it). This file gets renamed to reviews/<n>-refsdal.md once it has one.
+PR: #13 (opened by Ash). The extras (NC10b/NC17b, the NC15b store arm) stay in #13.
 
 ## Verdict
 APPROVE once R1 is applied (one line). Everything else matches what I asked for in reviews/10-refsdal.md.
