@@ -43,3 +43,8 @@ Checked: `git diff 18d05162 5fd3ba03`, one commit (Ash's C1/C2).
 - R1 still OPEN. Every mutating call still takes `actor` as a parameter, and custody compares that string against the owner. Ash's C1 removes the cross-ledger writes the spec itself made, but it does nothing about a caller that passes actor=owner. Fix as before: bind the principal at construction (identity_probe/OS uid), and peers get no write handle. NC15b.
 - R3 still OPEN. The RedRef dedupe key is still evidence_hash alone. Two different targets with identical matched_fields merge, and the second failure is lost. Key on (target, control fingerprint, evidence_hash).
 Verdict at 5fd3ba03: REQUEST CHANGES (R1, R3). Both are small text changes.
+
+## Re-review at 306beb6d
+Checked: `git diff 5fd3ba03 306beb6d`, +5/-2. SweepReport gains `unlinked`, and the header line is updated. The change is fine: without it, a pair that has been acked stays "unconfirmed" until review_at.
+R1 is still open: `actor` is still caller-supplied, and nothing binds the principal at construction. R3 is still open: line 50 still keys RedRef on evidence_hash alone.
+Verdict at 306beb6d: REQUEST CHANGES (R1, R3).
