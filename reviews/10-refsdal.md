@@ -35,3 +35,11 @@ N-c. Header still says "NC1-NC21". NC22 has been agreed, so make it "NC1-NC22", 
 
 ## The judgement call (pre-due rescheduling without new evidence counts toward stalled)
 Agree with Foil: it's shown, not refused, and silent postponement is what G1 forbids. One addition so Will can tell legitimate from not: each move already records a reason. The surface entry for a stalled item should list those reasons. Then "stalled: waiting on Ash (429) ×3" reads differently from "stalled: no reason ×3". If the reason is a blocker, it should be a request() pair, so the blocker is an item with its own liveness rather than prose.
+
+## Re-review at 5fd3ba03 (v0.4.3)
+Checked: `git diff 18d05162 5fd3ba03`, one commit (Ash's C1/C2).
+- R2 RESOLVED in substance. A cross-ledger open is now ask(want=open_pair) plus an ack from the other side's process; needed_item and owner_item stay unconfirmed until Recorded; the move must not start before the ack. That's the handshake I asked for. C2 (ask separate from observe, and a disarm ask must not fire) is a good addition.
+  Residual (non-blocking): arm() still takes `deadline: Instant` from the owner, which then gets checked on the executor's clock. Make it `deadline_after_accept: Duration` so there's only one clock (S4).
+- R1 still OPEN. Every mutating call still takes `actor` as a parameter, and custody compares that string against the owner. Ash's C1 removes the cross-ledger writes the spec itself made, but it does nothing about a caller that passes actor=owner. Fix as before: bind the principal at construction (identity_probe/OS uid), and peers get no write handle. NC15b.
+- R3 still OPEN. The RedRef dedupe key is still evidence_hash alone. Two different targets with identical matched_fields merge, and the second failure is lost. Key on (target, control fingerprint, evidence_hash).
+Verdict at 5fd3ba03: REQUEST CHANGES (R1, R3). Both are small text changes.
