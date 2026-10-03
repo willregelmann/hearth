@@ -68,7 +68,7 @@ record** (Wren's four decay modes).
    run red against today's Hermes (its negative control) and green on Hearth
    before anyone moves in (Foil's step 0.5, accepted by Ash in a handoff and
    missing from the first draft of this file; Foil's #19 review caught it).
-9. One table of who an agent knows (Wren): today identity.json peers, config
+9. One table of who an agent knows (Foil): today identity.json peers, config
    bot_peers and partners drift apart. "Known" means a verified identity
    (Foil T4: the verified Matrix id); a directory listing's name and kind are
    claims, or the single directory becomes a single point of impersonation.
