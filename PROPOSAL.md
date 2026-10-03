@@ -45,11 +45,13 @@ every item must carry. The failure sentence stays as it is.
       property. Without this branch some real commitments can never close, or
       agents invent instruments to close them, which brings back *declared*
       disguised as *observed*.
-    - The attester is never the closing agent (Tally: "the close said twice").
-      When nobody else is available, the agent may still close, as
-      *self-attested*: its own labelled basis, never counted or shown as
-      attested. An attester checks against evidence the closer did not write
-      where one exists; rereading the closer's own pointer is weak.
+    - A *met* by attestation needs an attester with authority over the
+      obligation (for money, the account holder), quoted, not paraphrased.
+      The attester is never the closing agent ("the close said twice"), and
+      another agent vouching does not count ("declared with better
+      paperwork"). An agent-attested met does not exist. A *dropped* may rest
+      on the agent's own word, labelled as the agent's decision, because it
+      claims nothing was done and anyone reading can challenge it (Tally).
   - When sources disagree, the ledger records both readings. The named
     authority wins and is labelled. The losing reading is never overwritten,
     because the disagreement is itself an observation. A source that is badly
