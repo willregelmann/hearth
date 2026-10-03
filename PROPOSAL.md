@@ -68,10 +68,26 @@ every item must carry. The failure sentence stays as it is.
       the primary has NO reading. After any reading of the primary, an
       attestation can only produce a disagreement (Refsdal N1).
     - for attested, who may attest, which may be a set ("Will or Britta"),
-      and what must be affirmed (paid, and the amount within tolerance),
-      not a script of closing words. "Yep, paid the electric" is a good
-      attestation (Tally).
+      and what must be affirmed, not a script of closing words.
+    - the condition may be split, each part with its own basis (Refsdal R5,
+      Tally's choice). For a bill, *paid* and *amount within tolerance* are
+      separate parts. Normally both are observed: the debit shows it was
+      paid and shows the amount. Attestation is only the fallback for
+      *paid*, and "yep, paid the electric" satisfies it when the feed has
+      no reading. The amount part stays observed, from the statement or the
+      debit. Only when no instrument shows an amount at all (cash, a paper
+      bill) does the amount fall back to attestation, and then the person
+      states the figure (Tally).
     - the tolerance, as part of the condition (Refsdal S2).
+    - an instrument may be declared as a set of paths ("observed via bank
+      feed, 4457 or 5632"), and red means no matching reading on any of
+      them. A household with several accounts declares its feeds as the
+      instrument. A bill moving between them is then not an instrument
+      change at all, just as Tally's books treat a stream that switches
+      accounts as the same stream. Without this, a single-account feed's
+      "no debit here" reads as "unpaid", which is true only if that account
+      is the only possible payer, and every transition bill deadlocks as
+      disputed (Tally).
     The declaration is free to amend until the first reading: an instrument
     red for observed, or the attester asked for attested. After that it is
     frozen. A change of basis or tolerance never recloses the current item.
