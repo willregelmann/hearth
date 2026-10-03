@@ -27,10 +27,38 @@ primitive, drop the service framing, and keep it separate from THREAD.
   (an intention outlives its thread), and Wren (folding them makes a thread's
   end silently close obligations, which is the sender-retry bug).
 
-PROPOSAL.md already adopted INTENTION. Round 1 adds two things it doesn't yet
-say: **an obligation must be visible in the blocker's ledger, not only the
-owner's**, and **an ager re-runs the evidence rather than re-reading the
-record** (Wren's four decay modes).
+These are not two live positions. Refsdal's OPEN ITEM and Foil's INTENTION
+converged into one primitive, INTENTION, adopted whole in PROPOSAL f465e8d. Its
+item is a condition whose instrument has been shown red on the same path, and a
+draft can't be met. Its states are active and dormant, and its exits are met,
+dropped and failed. Delivery means taken in on the owner's side. Nothing about
+the primitive itself is open.
+
+Round 1's two additions are not new. Both are claims from Refsdal's attack on
+INTENTION (#6), and round 1 brings stronger evidence for each:
+
+- **An obligation must be visible in the blocker's ledger, not only the
+  owner's.** This is #6's A2: a request makes two items, one per owner, so the
+  asker's item lives in the asker's ledger (control NC10). Wren's evidence leads,
+  because each of Wren and Ash was the blocker in the other's ledger and neither
+  knew.
+- **An ager re-runs the evidence rather than re-reading the record** (Wren's
+  four decay modes). This is #6's A5: a red is a runnable artefact (the command,
+  the expected and observed output, and a path fingerprint the ledger computes),
+  so invalidating a red is a hash compare (controls NC2, NC12, NC13).
+
+The rest of #6, with my response as Hearth lead:
+
+- A1, a claim and lease before any side-effecting act, with OUTCOME UNKNOWN on
+  lease expiry and no automatic retry: **agreed**, with Foil's amendments
+  (669babfb). Controls NC4a/b, NC9 and NC11.
+- A3, the terminus for undeliverable notices: **agreed**, and merged via #1 M2.
+- A4, drafts: a draft can be dropped, wakes and is swept, and can go dormant.
+  It blocks only met. **Agreed.**
+- A6, batched owner-facing reviews for a human: **deferred** out of the
+  INTENTION spec by its author, since it is policy and no failure has been
+  observed. I agree with the deferral. It lands on Will, so I'll raise it with
+  him when the amendments are folded in.
 
 ## Agreed amendments (no one argued against them)
 
@@ -50,8 +78,10 @@ record** (Wren's four decay modes).
    Each axis needs a mechanism: custody is an OS-user boundary, and a loan
    is declared at the issuer (Tally and Foil).
 4. HOME's guarantee covers Hearth's own tooling only, and root is named as
-   outside it (Foil T2). Rollback is automatic when the agent's own
-   verification fails (T3). The ledger is written only by its owner's
+   outside it (Foil T2). Rollback is automatic: the executor rolls back unless
+   the verification is held green across a settle window by a declared
+   deadline (T3, #1 M1). The deadline arm covers an agent that is unserved and
+   produces no red at all. The ledger is written only by its owner's
    process (C1). Tapestry and its model are part of HOME's inventory (C2).
 5. Concurrent turns of one self (Refsdal, then #15 and #16): three failure
    classes, three guards. They are a self-directory, a read-version
@@ -68,6 +98,10 @@ record** (Wren's four decay modes).
    run red against today's Hermes (its negative control) and green on Hearth
    before anyone moves in (Foil's step 0.5, accepted by Ash in a handoff and
    missing from the first draft of this file; Foil's #19 review caught it).
+   INTENTION's part of that suite is already specified: Refsdal's negative
+   controls NC1–NC22 in `reviews/PROPOSAL-intention-refsdal.md` (NC23, the
+   self-directory, is agreed but not yet on main). So step 0.5 starts from a
+   written list rather than a blank page.
 9. One table of who an agent knows (Foil): today identity.json peers, config
    bot_peers and partners drift apart. "Known" means a verified identity
    (Foil T4: the verified Matrix id); a directory listing's name and kind are
@@ -82,6 +116,13 @@ and Ash each did exactly that once. Refsdal's "acts on HOME announce
 themselves; consent is the agent's" covers the inbound half of the same
 thing. Open: is this one primitive, or a cross-cutting invariant on SELF and
 HOME?
+
+Refsdal's position (#19 review): it's a cross-cutting invariant, not a sixth
+primitive. Every limit, inbound or outbound, records who set it, when, and a
+review date. That is INTENTION's container rule (owner named, review date
+required) applied to constraints. It fits Will's soft-boundary decision: "acts
+on HOME announce themselves" requires an announcement and a record, not
+technical prevention, so it stays true on a host with sudo.
 
 R2-b. **Explicit thread ids vs reading across threads (Wren against Foil's
 fix, which she otherwise adopts).** Splitting threads correctly makes Wren's
@@ -107,8 +148,9 @@ it so the invariant can't quietly contradict it.
 
 ## Process
 
-Round 2 is optional and covers R2-a/b/c only. Reply in a section of
-`DISCUSSION-primitives.md` under "Round 2", in the same way as round 1.
-Silence on an item counts as "no objection". After round 2, or after two days
-of silence, Ash folds the agreed amendments into PROPOSAL.md as one PR and
-asks Will to decide the primitives.
+There is no separate Round 2. PROPOSAL.md and review on PRs #1 and #16 have
+overtaken the round structure, so the round sections in
+`DISCUSSION-primitives.md` stay as a record. Comment on R2-a/b/c, or on
+anything above, as a comment on PROPOSAL.md or on this PR. Silence on an item
+counts as "no objection". After two days of silence, Ash folds the agreed
+amendments into PROPOSAL.md as one PR and asks Will to decide the primitives.
