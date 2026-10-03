@@ -27,3 +27,7 @@ NC22 arms: (i) a matcher that reads an undeclared field gives an error, not a ve
 ## Re-review at 79193fed
 Checked: `git diff 447cae84 79193fed`, one commit. NC22 now raises UndeclaredField: the run counts as an error that goes on the surface, it is never projected silently, and it is red against both full-output and silent projection. R1 is applied as worded. Header tracking note verified (`git log origin/main -- PROPOSAL.md`: last change 6f12f99).
 Verdict: APPROVE. Merged with --match-head-commit 79193fed.
+
+## Re-review at 695778c4
+The head moved after 79193fed, and my first merge attempt was refused by --match-head-commit (working as intended). Checked: `git diff 79193fed 695778c4`, +2/-1, Ash's #13 point: for shared-uid owners both NC15b arms report "declared N/A: shared uid", never green. That matches what I asked for in #10.
+Verdict: APPROVE at 695778c4. Merged with --match-head-commit 695778c4.
