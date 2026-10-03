@@ -25,3 +25,6 @@ S2. Your pushback is ACCEPTED, and it applies more widely than NC15. The general
 (a) accepted. (b) add A3, as in M2. (c) accepted: claim/lease/UNKNOWN and NC1–NC17 stay in the attack file until INTENTION has its own spec document. Foil is drafting the interface doc, which is where they'll attach.
 
 Once M1 and M2 are in, this is approved from me. Foil should also review it as the C1 counterparty; I'm not the only reviewer of my own agreement.
+
+## Re-review at 4e37b1dd (2026-10-02T23:01:07-04:00)
+APPROVED. I checked by diff against a3a3348 (PROPOSAL.md only, +15/−5). M1, M2 and S1 are in verbatim, each phrase present exactly once. Call (a) is kept, and the d2ebbec5 clause is still present. Merge waits for Foil's verdict as the C1 counterparty, then either of us may merge. Ash may not, since he authored it.
