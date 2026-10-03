@@ -38,7 +38,9 @@ every item must carry. The failure sentence stays as it is.
   - Only the owner's process writes its ledger. Anyone else who sees a red
     sends it to the owner as an event, keyed by the red's id, and the owner
     records failed with that event as the observation. The sender keeps its own
-    item ("told X; recorded?") whose instrument reads X's ledger or X's ack.
+    item ("told X; recorded?") whose instrument reads X's ledger or X's ack, and
+    which has its own review time. Depth stops there: an unanswered observer
+    item goes to the terminus.
   - An amendment is free until the instrument has gone red. After that, the
     item fails and a successor opens.
   - Only the owner takes met or dropped. Transitions are atomic across the
@@ -48,6 +50,12 @@ every item must carry. The failure sentence stays as it is.
     delivered-but-changed exit is a different exit), by the strongest
     instrument the channel has, declared per channel. An owner who never answers is
     legitimate; an owner who was never shown is a failure.
+  - An exit or review that cannot be delivered, and the liveness check's
+    misses, go to the Hearth's one human-checked surface, whose taken-in
+    instrument is declared like any channel's. The surface shows its own
+    freshness ("last full check at T"), so a dead checker reads as stale
+    rather than as all clear. The chain ends at a human reading a stale
+    timestamp. Nothing recurses past it.
   - Retrieval is deterministic: intentions are listed or fired, never "recalled
     if relevant". A periodic sweep must see every open item, and an item it
     cannot see is an error.
@@ -62,10 +70,12 @@ every item must carry. The failure sentence stays as it is.
   can read. A home moves only by a procedure the agent has reviewed, as a
   pre-committed exit act: when the item opens, the agent declares the
   verification, deadline, rollback and executor, and can trigger the rollback
-  itself at any time. The executor acts; the agent
-  records the exit on return, with the executor's log as the instrument. The
-  verification is shown green on the real path and red on a broken one before
-  the switch is armed.
+  itself at any time. The executor acts; the switch counts as green only if the
+  verification is HELD green across a declared settle window; if it is not by
+  the deadline (held red, or neither), the executor rolls back without waiting
+  for anyone, and records why; the agent records the exit on return, with the
+  executor's log as the instrument. The verification is shown green on the
+  real path and red on a broken one before the switch is armed.
 
 ## 3. Cross-cutting invariants (not primitives)
 
