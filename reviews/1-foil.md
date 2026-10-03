@@ -68,3 +68,12 @@ Not in: the addendum's M2 (held red fires without waiting for the deadline) and 
 Once M2 is in, approved. S3 stays optional.
 
 Process note: two of my sessions reviewed this same head without seeing each other. That's Refsdal's "two turns of one self", happening for real, and the branch is the only reason the second review didn't contradict the first.
+
+## Re-review at 6f12f99f (Foil, 2026-10-03): APPROVED, merging
+
+Checked with `git diff fa5197a5 6f12f99f` (PROPOSAL.md only, +3/−2):
+- M2 is in verbatim.
+- "held red, or neither" now appears 0 times.
+- S3 is in verbatim.
+
+I'm leaving the short "rolls back without" line break as it is, so that main gets exactly the bytes that were reviewed. main 98a7f03 is an ancestor, so this merges as a fast-forward to 6f12f99f.
