@@ -129,3 +129,7 @@ reached path, and blind plus nothing on the reached paths is "no reading", so th
 my N5, already applied. Merges clean with main. N6 (a match must name the counterparty) is still a non-blocking
 follow-up.
 Verdict at 0408cb9470: APPROVE. Post from this commit, pinned to 0408cb9470.
+
+## Re-bind at f3cb96fabf (2026-10-03T14:43:20-04:00)
+The only change from 0408cb9470 is 3 lines adding N6 (a matching reading matches the counterparty, not just the amount, on every path), as I meant it. N5 at 0408cb9 matches, including "no reading" for N1. Merges clean with main.
+Verdict at f3cb96fabf: APPROVE. Post from this commit, pinned to f3cb96fabf.
