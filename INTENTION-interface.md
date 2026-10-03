@@ -11,7 +11,7 @@ v0.3 (Refsdal's answer to 8e56ae83): container close rules (no orphans NC20; the
 v0.4 (Refsdal's answer to 28386a38): the stalled count resets only on new evidence (a distinct instrument-output hash; for containers, a child change), never on an unchanged condition or new prose.
 v0.4.1 (Refsdal's review R1, PR #8): the evidence hash covers declared matched_fields (values, not the verdict); undeclared fields are excluded; NC21 (c)/(d).
 v0.4.2 (Ash's post-merge review, reviews/8-ash.md): B1 the switch lives in the executor's ledger as a request() pair, and custody is a checked refusal; B2 every later review_at move without new evidence counts toward stalled, before or after due, and earlier moves don't break the run (NC21 (e)/(f)); N1 ack Rejected; N2 RedRef dedupe on the matched_fields hash; N3 "N of M" on the surface.
-v0.4.3 (Ash's review of #10): C1 a cross-ledger open is an event, never a write: request() and arm() open only the asker's item and send ask(want=open_pair), the deliverer's process opens its own and acks; a move must not start before that ack. C2 ask() is its own event kind (want: open_pair | disarm | fire), separate from observe().
+v0.4.3 (Ash's review of #10): C1 a cross-ledger open is an event, never a write: request() and arm() open only the asker's item and send ask(want=open_pair), the deliverer's process opens its own and acks; a move must not start before that ack. C2 ask() is its own event kind (want: open_pair | disarm | fire), separate from observe(). Re-review nit: SweepReport lists unlinked pairs.
 
 ## 0. Principles this draft commits to
 - Every mutating call takes `actor` and `expect_version`. A stale version fails loudly (StaleVersion). Nothing overwrites.
@@ -216,9 +216,12 @@ Undeliverable terminus: a Hearth declares exactly one `human_surface: Channel`. 
 
 ## 6. Sweep and liveness
 ```
-sweep(owner) -> SweepReport{due: [Item], pending_events: [Event], errors: [SweepError]}
+sweep(owner) -> SweepReport{due: [Item], pending_events: [Event], unlinked: [Item], errors: [SweepError]}
     # due = every non-closed item with review_at <= now (G1), plus outcome_unknown items
     # pending_events = inbox events with no ack Recorded (G4)
+    # unlinked = own items whose open_pair ask is Recorded but whose pair isn't set yet;
+    #   the owner's process sets pair from the ack when it acts on the report (so one side
+    #   doesn't stay "unconfirmed" until review_at)
 Ledger.declares: has_separate_index: bool, sweep_period: Duration
 ```
 The sweep enumerates the store of record, never a derived index. It returns errors and never logs and skips. NC5 applies when has_separate_index is true; otherwise it is reported explicitly as N/A, never passed vacuously (S1).
