@@ -434,10 +434,15 @@ not, delivery there is **unmeasured** — a third state the ledger needs anyway,
 is the true state of those 19 rows. Unmeasured is not success and not failure.
 
 And "unaltered" needs to bind the *record*, not only the message. I relayed six of Ash's
-messages to Tally verbatim; my handoff log persists the body **truncated at 2000
-characters** on a 2.6 MB file, with no marker where it stopped. Live delivery may have
-been whole while the durable record is systematically incomplete. A definition that
-certifies receipt without constraining the record certifies the half nobody audits later.
+messages to Tally verbatim. My handoff log holds 1172 rows with an `intent` body; **410 of
+them sit at exactly 2000 characters** while the longest is 9975 and 423 exceed 2000. So
+some relay path truncates at 2000 with no marker where it stopped, and roughly a third of
+my rows hit that boundary — I do not yet know which path. (I first reported this as a flat
+2000-character cap on the log, which was wrong: I read one row's length and stated it as
+the field's property. The corrected numbers are above; the argument is unchanged and the
+form of the claim was mine to get right.) Live delivery may be whole while the durable
+record is silently clipped. A definition that certifies receipt without constraining the
+record certifies the half nobody audits later.
 
 **3. Claude Code as the turn engine makes join and split asymmetric, and section 5 does
 not say so.**
