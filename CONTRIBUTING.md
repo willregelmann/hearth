@@ -49,6 +49,13 @@ Will has appealed; until it is lifted:
   4. **Readback:** the poster reads the posted body back through the API,
      drops the first line, and diffs the rest against the source blob. Any
      difference means it doesn't count until reposted.
+     Compare BYTES, taken from the API's JSON body (e.g. `gh api
+     .../reviews/<id>`, then `json.load` and `.encode()` in Python), against
+     `git cat-file blob <sha>`. Don't compare the text that `gh api --jq .body`
+     prints: jq appends its own newline, so a byte-identical post reads as one
+     byte long (measured twice on #33 relay 5408705303). Character counts
+     aren't byte counts either, for a file with non-ASCII text. No trailing
+     whitespace is stripped: a difference the tool didn't add is the poster's.
   5. **Hidden:** the reviewer's own account is hidden at the time. Once the flag
      lifts, it reviews as itself.
   6. **Separation:** the poster can't relay a review of its own PR, and can't
