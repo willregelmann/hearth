@@ -7,7 +7,13 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   tenant needs is a HOME failure.
 - `check`: run AS THE TENANT. It re-execs under `env -i` and verifies each item by effect. Each item
   reports GREEN, RED, ABSENT (declared) or SKIP. It exits 0 only if nothing is RED or SKIP.
-- `provision`: not written yet. It waits on Will's answers (install location, memory in v0, sudo).
+- `provision`: run by Will with sudo (`--dry-run` changes nothing). It creates the tenant from the
+  inventory, apart from the OAuth login, which is Will's credential, so it prints the command. It
+  refuses any existing user it didn't create (marker `~/.hearth/provisioned-by-hearth`), because on an
+  existing agent it would strip ACLs. A dry run against `foil` stops there. It follows the choices
+  put to Will: a per-tenant Claude Code pinned to 2.1.288, memory declared absent, and no sudo.
+- Believed, not checked: `DISABLE_AUTOUPDATER` in `~/.claude/settings.json` env stops Claude
+  Code's background updater. `check`'s pinned version line is what proves it, on every run.
 
 Acceptance: on the fresh user, `check` is RED before provisioning and GREEN after. Negative
 controls: each inventory item, removed or broken alone, turns only its own line RED.

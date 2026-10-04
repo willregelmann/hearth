@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# home/provision — run by Will with sudo. Creates a tenant from home/inventory and nothing else.
+#
+#   sudo home/provision buster            # do it
+#   sudo home/provision --dry-run buster  # print what it would do, change nothing
+#
+# Every step checks its own state first, so a re-run after a failure continues instead of
+# duplicating. It never deletes or overwrites a tenant's file: if something exists with the wrong
+# owner or mode it stops and says so, and a person decides.
+#
+# Not automated, on purpose: the OAuth login. It's Will's credential (a loan from his Max account),
+# so provision prints the command and Will runs it himself.
+#
+# Choices this follows (asked of Will; changing any of them is a small edit):
+#   - Claude Code per tenant, copied from Will's pinned native install, with auto-update off
+#   - memory declared absent in v0
+#   - no sudo for the tenant
+set -euo pipefail
+
+DRY=0; [ "${1:-}" = "--dry-run" ] && { DRY=1; shift; }
+T=${1:?usage: provision [--dry-run] <tenant>}
+CLAUDE_VERSION=2.1.288
+CLAUDE_SRC=/home/will/.local/share/claude/versions/$CLAUDE_VERSION
+EXTRA_GROUPS=agents
+READER=will                       # gets --x on the home, so it can read the published ledger
+
+case "$T" in *[!a-z0-9_-]*|'') echo "bad tenant name: $T" >&2; exit 2;; esac
+[ $DRY = 1 ] || [ "$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 2; }
+
+run() { echo "+ $*"; [ $DRY = 1 ] || "$@"; }
+as_t() { run sudo -u "$T" -H "$@"; }
+die() { echo "STOP: $*" >&2; exit 1; }
+
+# 1. user: own primary group, plus agents. Only a user this script created may be touched again:
+#    an existing user without the marker is someone's home, and provision would strip its ACLs.
+MARK=.hearth/provisioned-by-hearth
+if getent passwd "$T" >/dev/null; then
+  Hx=$(getent passwd "$T" | cut -d: -f6)
+  [ -e "$Hx/$MARK" ] || die "user $T exists and wasn't created by provision (no $Hx/$MARK); refusing to touch it"
+  [ "$(id -gn "$T")" = "$T" ] || die "user $T exists with primary group $(id -gn "$T")"
+  echo "= user $T exists (provisioned)"
+else
+  run useradd --create-home --user-group --groups "$EXTRA_GROUPS" --shell /bin/bash "$T"
+  Hx=$(getent passwd "$T" | cut -d: -f6 || true); Hx=${Hx:-/home/$T}
+  run install -d -o "$T" -g "$T" -m 755 "$Hx/.hearth"
+  [ $DRY = 1 ] && echo "+ write $Hx/$MARK" || date -u +%FT%TZ > "$Hx/$MARK"
+fi
+for g in $(echo "$EXTRA_GROUPS" | tr ',' ' '); do
+  id -nG "$T" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" || run usermod -aG "$g" "$T"
+done
+H=$(getent passwd "$T" | cut -d: -f6 || true); H=${H:-/home/$T}
+
+# sudo: the tenant must not be in an admin group. Rules in sudoers are checked by home/check.
+for g in sudo admin wheel; do
+  id -nG "$T" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" && die "$T is in group $g; HOME declares no sudo"
+done
+
+# 2. home: tenant-owned, group/other nothing, exactly one ACL entry (READER traverse).
+run chown "$T:$T" "$H"
+run chmod 700 "$H"
+run setfacl -b "$H"
+run setfacl -m "u:$READER:--x" "$H"
+
+# 3. Claude Code, the tenant's own copy of the pinned version.
+if [ ! -x "$CLAUDE_SRC" ]; then
+  [ $DRY = 1 ] && echo "! (dry run) $CLAUDE_SRC not visible from here" || \
+    die "$CLAUDE_SRC not found; is Will's install still at $CLAUDE_VERSION?"
+fi
+dst=$H/.local/share/claude/versions/$CLAUDE_VERSION
+if [ -e "$dst" ]; then
+  cmp -s "$CLAUDE_SRC" "$dst" || die "$dst exists and differs from $CLAUDE_SRC"
+  echo "= $dst present"
+else
+  as_t mkdir -p "$H/.local/share/claude/versions" "$H/.local/bin"
+  run install -o "$T" -g "$T" -m 755 "$CLAUDE_SRC" "$dst"
+fi
+link=$H/.local/bin/claude
+if [ -L "$link" ] && [ "$(readlink "$link")" = "$dst" ]; then echo "= $link ok"
+elif [ -e "$link" ] || [ -L "$link" ]; then die "$link exists and isn't the pinned link"
+else as_t ln -s "$dst" "$link"; fi
+# pin: stop the background updater (believed: DISABLE_AUTOUPDATER in settings env; check proves the version)
+settings=$H/.claude/settings.json
+if [ -e "$settings" ]; then
+  grep -q DISABLE_AUTOUPDATER "$settings" || die "$settings exists without DISABLE_AUTOUPDATER; add it by hand"
+  echo "= $settings present"
+else
+  as_t mkdir -p "$H/.claude"
+  [ $DRY = 1 ] && echo "+ write $settings" || \
+    sudo -u "$T" -H sh -c "umask 077; printf '%s\n' '{\"env\": {\"DISABLE_AUTOUPDATER\": \"1\"}}' > '$settings'"
+fi
+
+# 4. ledger: written only by the tenant, readable by READER through the home's --x.
+as_t mkdir -p "$H/.hearth"
+run chmod 755 "$H/.hearth"
+[ -e "$H/.hearth/ledger.jsonl" ] || as_t touch "$H/.hearth/ledger.jsonl"
+run chmod 644 "$H/.hearth/ledger.jsonl"
+[ $DRY = 1 ] || [ "$(stat -c %U "$H/.hearth/ledger.jsonl")" = "$T" ] || die "ledger not owned by $T"
+
+# 5. check + inventory: the tenant's own copy, so no other agent can edit what it's judged by
+here=$(cd "$(dirname "$0")" && pwd)
+as_t mkdir -p "$H/hearth/home"
+for f in check inventory; do
+  run install -o "$T" -g "$T" -m "$([ $f = check ] && echo 755 || echo 644)" "$here/$f" "$H/hearth/home/$f"
+done
+
+cat <<EOF
+
+Provisioned $T, apart from the login. Next, as Will:
+  1. sudo -iu $T claude          # then /login, and choose the Max account (the declared loan)
+  2. sudo -iu $T ./hearth/home/check     # -i starts in /home/$T; don't write ~ (Will's shell expands it)
+     It must be GREEN apart from memory/sudo (ABSENT, declared). Any RED, stop and send it to Foil.
+  3. Custody, from outside (check can't prove it from inside a sandbox):
+     sudo -u foil ls /home/$T ; sudo -u refsdal ls /home/$T    # both must fail
+     sudo -u $T ls /home/foil /home/refsdal                     # must fail (will has --x on foil's; that's will's, not $T's)
+EOF
