@@ -12,9 +12,16 @@ if [ -z "${HOME_CHECK_CLEAN:-}" ]; then
 fi
 
 NO_MODEL=0; [ "${1:-}" = "--no-model" ] && { NO_MODEL=1; shift; }
-INV=${1:-$(dirname "$0")/inventory}
+DEFAULT_INV=$(dirname "$(readlink -f "$0")")/inventory
+INV=${1:-$DEFAULT_INV}
 LEDGER="$HOME/.hearth/ledger.jsonl"
 bad=0
+# Any other inventory is for negative controls only: its lines are reported, but the run can never
+# pass, or a tenant could grade itself against a list without the judge line (or with nothing in it).
+if [ "$(readlink -f "$INV")" != "$DEFAULT_INV" ]; then
+  printf 'RED    %-11s not the installed inventory (%s); result is for negative controls only\n' inventory "$INV"
+  bad=1
+fi
 
 mode_of() { stat -c '%a' "$1" 2>/dev/null; }
 owner_of() { stat -c '%U' "$1" 2>/dev/null; }
