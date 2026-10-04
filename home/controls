@@ -62,13 +62,53 @@ expect "caller env (BASH_ENV, PATH) doesn't reach check" $(! grep -q PLANTED "$t
 # plant is removed on exit.
 plant="$HOME/.local/bin/stat"
 if [ -e "$plant" ]; then
-  echo "skip tenant-shadowed tool: $plant already exists"
+  echo "SKIP tenant-shadowed tool: $plant already exists, so nothing was tested"; fail=1
 else
   mkdir -p "$HOME/.local/bin"; printf '#!/bin/sh\necho PLANTED-HOME\n' > "$plant"; chmod +x "$plant"
   trap 'rm -f "$plant"; rm -rf "$t"' EXIT
   "$t/check" --no-model > "$t/out" 2>&1; rm -f "$plant"
   expect "tenant ~/.local/bin doesn't shadow check's tools" $(! grep -q PLANTED "$t/out"; echo $?) \
     "$(grep PLANTED "$t/out" | sort -u | tr '\n' ' ')"
+fi
+
+# 9. root-equivalent groups: a group the runner is in, added to ROOT_GROUPS, turns sudo RED; and
+# provision denies exactly check's list (a relationship, so neither can drift without the other).
+mine=$(id -gn)
+sed "s/^ROOT_GROUPS=\"/ROOT_GROUPS=\"$mine /" "$t/check" > "$t/rg"; chmod +x "$t/rg"
+cp "$here/inventory" "$t/inventory"; "$t/rg" --no-model > "$t/out" 2>&1
+expect "member of a ROOT_GROUPS group: sudo RED" $(grep -q "^RED    sudo        in root-equivalent group $mine" "$t/out"; echo $?) \
+  "$(grep '^[A-Z]* *sudo ' "$t/out")"
+cg=$(grep -oE '^ROOT_GROUPS="[^"]*"' "$here/check" | cut -d'"' -f2 | tr ' ' '\n' | sort | xargs)
+pg=$(grep -oE '^for g in [a-z ]+; do$' "$here/provision" | sed -n 's/^for g in \(.*\); do$/\1/p' \
+     | grep -w docker | tr ' ' '\n' | sort | xargs)
+expect "provision denies check's ROOT_GROUPS ($cg)" $([ -n "$cg" ] && [ "$cg" = "$pg" ]; echo $?) \
+  "check [$cg], provision [$pg]"
+
+# 10. inbound custody is KNOWN or RED, never GREEN, and KNOWN alone doesn't fail the run
+printf 'custody_in | own | tenant | OS user boundary | inbound_custody\n' > "$t/inventory"
+sed 's/^REQUIRED=".*"$/REQUIRED="custody_in:inbound_custody"/' "$t/check" > "$t/ci"; chmod +x "$t/ci"
+"$t/ci" --no-model > "$t/out" 2>&1; rc=$?
+line=$(grep -E '^[A-Z]+ +custody_in' "$t/out")
+case "$line" in
+  KNOWN*) expect "inbound custody KNOWN, run passes (rc 0)" $([ $rc = 0 ]; echo $?) "rc=$rc: $line";;
+  RED*)   expect "inbound custody RED, run fails" $([ $rc != 0 ]; echo $?) "rc=$rc: $line";;
+  *)      expect "inbound custody never GREEN" 1 "$line";;
+esac
+sed 's/^ROOT_GROUPS=".*"$/ROOT_GROUPS=""/' "$t/ci" > "$t/ci0"; chmod +x "$t/ci0"
+"$t/ci0" --no-model > "$t/out" 2>&1; rc=$?
+expect "no root account found: RED (unverified), not GREEN" \
+  $(grep -q '^RED    custody_in  .*unverified' "$t/out" && [ $rc != 0 ]; echo $?) "rc=$rc: $(grep custody_in "$t/out")"
+
+# 11. a provisioning marker the runner plants in its own home doesn't make provision touch it.
+# Runs provision --dry-run on the runner's own account (changes nothing). Skipped is a failure.
+mark="$HOME/.hearth-provisioned"
+if [ -e "$mark" ]; then
+  echo "SKIP forged marker: $mark already exists, so nothing was tested"; fail=1
+else
+  : > "$mark"
+  "$here/provision" --dry-run "$(id -un)" > "$t/out" 2>&1; rc=$?; rm -f "$mark"
+  expect "forged in-home marker: provision refuses (not in registry)" \
+    $(grep -q "isn't in /var/lib/hearth/tenants" "$t/out" && [ $rc != 0 ]; echo $?) "rc=$rc: $(head -3 "$t/out" | tr '\n' ' ')"
 fi
 
 exit $fail

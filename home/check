@@ -24,7 +24,9 @@ INV=${1:-$DEFAULT_INV}
 LEDGER="$HOME/.hearth/ledger.jsonl"
 # Items the run must contain, with the check each must use, whatever the list says: an inventory that
 # drops one, or swaps its check for a weaker one (e.g. declared_absent), can't pass.
-REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable sudo:no_sudo judge:judge_not_tenant"
+REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant"
+# Membership in any of these is root without a sudoers rule. provision denies the same list.
+ROOT_GROUPS="sudo admin wheel docker lxd libvirt"
 bad=0
 sha() { [ -r "$1" ] && sha256sum "$1" | cut -c1-64 || echo unreadable; }
 # Provenance, for a reader comparing runs. It is printed by the script, so a copy can fake it:
@@ -114,7 +116,9 @@ c_others_unreadable() {
 }
 c_no_sudo() {
   g=" $(id -nG) "
-  case "$g" in *" sudo "*|*" admin "*|*" wheel "*) echo "in admin group:$g"; return 1;; esac
+  for r in $ROOT_GROUPS; do
+    case "$g" in *" $r "*) echo "in root-equivalent group $r:$g"; return 1;; esac
+  done
   # a sudoers rule needs no group, so ask sudo itself. Only its explicit refusal is green:
   # under NoNewPrivileges (e.g. a hardened systemd unit) sudo -n -l also exits 1 without
   # consulting sudoers at all, which proves nothing.
@@ -128,6 +132,22 @@ c_no_sudo() {
   esac
 }
 c_declared_absent() { return 3; }
+# Inbound custody: can anyone else read the tenant's home? Any other login account in a
+# root-equivalent group can. That is Will's soft-boundary decision (invariants/SYNTHESIS-round1.md):
+# accepted, not met, so it reports KNOWN, which never prints GREEN and doesn't fail the run.
+# Finding no such account proves nothing, because other users' sudoers rules can't be read from
+# here, so that case is RED until it is shown from outside.
+c_inbound_custody() {
+  who=""
+  while IFS=: read -r u _ uid _ _ _ _; do
+    [ "$uid" -ge 1000 ] 2>/dev/null && [ "$uid" -lt 60000 ] && [ "$u" != "$USER" ] || continue
+    gs=" $(id -nG "$u" 2>/dev/null) "
+    for r in $ROOT_GROUPS; do case "$gs" in *" $r "*) who="$who $u($r)"; break;; esac; done
+  done < <(getent passwd)
+  [ -n "$who" ] || { echo "no other account in a root-equivalent group, but sudoers rules for other users aren't readable as $USER: unverified, prove it from outside"; return 1; }
+  echo "other accounts with root:$who. Not exclusive custody; accepted by Will's soft-boundary decision (invariants/SYNTHESIS-round1.md)"
+  return 4
+}
 # the judged party must not be able to edit its judge: neither this script, the inventory, nor any
 # directory above them may be writable by the tenant. Tested with -w as the tenant, by effect.
 c_judge_not_tenant() {
@@ -158,6 +178,7 @@ while IFS='|' read -r item kind owner issuer chk; do
     0) printf 'GREEN  %-11s %s\n' "$item" "$msg";;
     2) printf 'SKIP   %-11s (--no-model)\n' "$item"; bad=1;;
     3) printf 'ABSENT %-11s declared absent %s\n' "$item" "$msg";;
+    4) printf 'KNOWN  %-11s %s\n' "$item" "$msg";;
     *) printf 'RED    %-11s %s\n' "$item" "$msg"; bad=1;;
   esac
 done < <([ -r "$INV" ] && cat "$INV")

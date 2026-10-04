@@ -5,9 +5,9 @@
 #   sudo home/provision --dry-run buster  # print what it would do, change nothing
 #
 # Every step checks its own state first, so a re-run after a failure continues instead of
-# duplicating. One gap: if it dies between useradd and the marker write (the next command), a
+# duplicating. One gap: if it dies between useradd and the registry write (the next command), a
 # re-run refuses the user as not its own. Then check by hand that /home/<tenant> is empty and
-# write the marker yourself, or userdel and start again. It never deletes or overwrites a tenant's file: if something exists with the wrong
+# write its uid to /var/lib/hearth/tenants/<tenant> as root, or userdel and start again. It never deletes or overwrites a tenant's file: if something exists with the wrong
 # owner or mode it stops and says so, and a person decides.
 #
 # Not automated, on purpose: the OAuth login. It's Will's credential (a loan from his Max account),
@@ -41,26 +41,34 @@ done
 /usr/bin/env -S -i /bin/true 2>/dev/null || die "/usr/bin/env has no -S (check's shebang needs coreutils 8.30 or later)"
 
 # 1. user: own primary group, plus agents. Only a user this script created may be touched again:
-#    an existing user without the marker is someone's home, and provision would strip its ACLs.
-MARK=.hearth-provisioned          # root-owned, in the home's top level: written by the very next command
+#    an existing user it didn't create is someone's home, and provision would strip its ACLs.
+#    The record lives in a root-owned registry outside every home, holding the uid, so no tenant
+#    or other agent can forge or delete it. A marker inside the home could be made by its owner.
+REG=/var/lib/hearth/tenants      # REG/<tenant> holds the uid, written by the command after useradd
+registered() {                   # root-owned, not writable by anyone else, and naming this uid
+  local f=$REG/$1
+  [ -f "$f" ] && [ ! -L "$f" ] && [ "$(stat -c %U "$f")" = root ] && [ "$(stat -c %U "$REG")" = root ] \
+    && [ $(( 8#$(stat -c %a "$f") & 8#022 )) = 0 ] && [ $(( 8#$(stat -c %a "$REG") & 8#022 )) = 0 ] \
+    && [ "$(cat "$f")" = "$(id -u "$1")" ]
+}
 if getent passwd "$T" >/dev/null; then
-  Hx=$(getent passwd "$T" | cut -d: -f6)
-  [ -e "$Hx/$MARK" ] || die "user $T exists and wasn't created by provision (no $Hx/$MARK); refusing to touch it"
+  registered "$T" || die "user $T exists and isn't in $REG with its uid (provision didn't create it); refusing to touch it"
   [ "$(id -gn "$T")" = "$T" ] || die "user $T exists with primary group $(id -gn "$T")"
-  echo "= user $T exists (provisioned)"
+  echo "= user $T exists (registered)"
 else
+  run install -d -o root -g root -m 755 /var/lib/hearth "$REG"
   run useradd --create-home --user-group --groups "$EXTRA_GROUPS" --shell /bin/bash "$T"
-  Hx=$(getent passwd "$T" | cut -d: -f6 || true); Hx=${Hx:-/home/$T}
-  [ $DRY = 1 ] && echo "+ write $Hx/$MARK" || date -u +%FT%TZ > "$Hx/$MARK"
+  [ $DRY = 1 ] && echo "+ write $REG/$T (uid)" || { umask 022; id -u "$T" > "$REG/$T"; }
 fi
 for g in $(echo "$EXTRA_GROUPS" | tr ',' ' '); do
   id -nG "$T" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" || run usermod -aG "$g" "$T"
 done
 H=$(getent passwd "$T" | cut -d: -f6 || true); H=${H:-/home/$T}
 
-# sudo: the tenant must not be in an admin group. Rules in sudoers are checked by home/check.
-for g in sudo admin wheel; do
-  id -nG "$T" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" && die "$T is in group $g; HOME declares no sudo"
+# sudo: the tenant must not be in a root-equivalent group (docker, lxd and libvirt give root with no
+# sudoers rule). Same list as check's ROOT_GROUPS. Rules in sudoers are checked by home/check.
+for g in sudo admin wheel docker lxd libvirt; do
+  id -nG "$T" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" && die "$T is in group $g, which is root; HOME declares no sudo"
 done
 
 # 2. home: tenant-owned, group/other nothing, exactly one ACL entry (READER traverse).
@@ -121,7 +129,8 @@ cat <<EOF
 Provisioned $T, apart from the login. Next, as Will:
   1. sudo -iu $T claude          # then /login, and choose the Max account (the declared loan)
   2. sudo -iu $T $JUDGE/check
-     It must be GREEN apart from memory/sudo (ABSENT, declared). Any RED, stop and send it to Foil.
+     It must be GREEN apart from memory/sudo (ABSENT, declared) and custody_in (KNOWN while any
+     other account has root). Any RED, stop and send it to Foil.
   3. Custody, from outside (check can't prove it from inside a sandbox). Every line must FAIL:
      sudo -u foil ls /home/$T ; sudo -u refsdal ls /home/$T                    # read
      sudo -u foil stat /home/$T/.hearth/ledger.jsonl                           # traverse (--x reach)
