@@ -32,6 +32,13 @@ case "$T" in *[!a-z0-9_-]*|'') echo "bad tenant name: $T" >&2; exit 2;; esac
 run() { echo "+ $*"; [ $DRY = 1 ] || "$@"; }
 as_t() { run sudo -u "$T" -H "$@"; }
 die() { echo "STOP: $*" >&2; exit 1; }
+# Inside the tenant's home, root does nothing. On a re-run the tenant has had the home and can have
+# planted symlinks; chmod/install/cmp/grep as root would follow them to any file on the host. So every
+# write under $H runs as the tenant (as_t) and every read or test runs as the tenant too (tq; in a dry
+# run, as the caller, read only). A link can then only reach what the tenant could reach anyway.
+# nolink refuses links outright, so a planted link is a STOP that a person sees, not a silent EPERM.
+tq() { if [ $DRY = 1 ]; then "$@"; else sudo -u "$T" -H "$@"; fi; }
+nolink() { local p; for p; do [ -L "$p" ] && die "$p is a symlink; provision doesn't follow links in a tenant's home"; done; return 0; }
 
 # Only a user this script created may be touched again: an existing user it didn't create is
 # someone's home, and provision would strip its ACLs. The record lives in a root-owned registry
@@ -87,22 +94,29 @@ if [ ! -x "$CLAUDE_SRC" ]; then
   [ $DRY = 1 ] && echo "! (dry run) $CLAUDE_SRC not visible from here" || \
     die "$CLAUDE_SRC not found; is Will's install still at $CLAUDE_VERSION?"
 fi
-dst=$H/.local/share/claude/versions/$CLAUDE_VERSION
-if [ -e "$dst" ]; then
-  cmp -s "$CLAUDE_SRC" "$dst" || die "$dst exists and differs from $CLAUDE_SRC"
+vdir=$H/.local/share/claude/versions
+dst=$vdir/$CLAUDE_VERSION
+link=$H/.local/bin/claude
+nolink "$H/.local" "$H/.local/share" "$H/.local/share/claude" "$vdir" "$dst" "$H/.local/bin"
+if tq test -e "$dst"; then
+  tq cmp -s - "$dst" < "$CLAUDE_SRC" || die "$dst exists and differs from $CLAUDE_SRC"
   echo "= $dst present"
 else
-  as_t mkdir -p "$H/.local/share/claude/versions" "$H/.local/bin"
-  run install -o "$T" -g "$T" -m 755 "$CLAUDE_SRC" "$dst"
+  as_t mkdir -p "$vdir" "$H/.local/bin"
+  nolink "$H/.local" "$H/.local/share" "$H/.local/share/claude" "$vdir" "$H/.local/bin"
+  # root only opens the source; the tenant writes the copy (to a temp name, so a failed copy never
+  # looks like a finished one)
+  [ $DRY = 1 ] && echo "+ copy $CLAUDE_SRC -> $dst (written by $T)" || \
+    sudo -u "$T" -H sh -c 'umask 022; cat > "$1.part" && chmod 755 "$1.part" && mv "$1.part" "$1"' sh "$dst" < "$CLAUDE_SRC"
 fi
-link=$H/.local/bin/claude
 if [ -L "$link" ] && [ "$(readlink "$link")" = "$dst" ]; then echo "= $link ok"
 elif [ -e "$link" ] || [ -L "$link" ]; then die "$link exists and isn't the pinned link"
 else as_t ln -s "$dst" "$link"; fi
 # pin: stop the background updater (believed: DISABLE_AUTOUPDATER in settings env; check proves the version)
 settings=$H/.claude/settings.json
-if [ -e "$settings" ]; then
-  grep -q DISABLE_AUTOUPDATER "$settings" || die "$settings exists without DISABLE_AUTOUPDATER; add it by hand"
+nolink "$H/.claude" "$settings"
+if tq test -e "$settings"; then
+  tq grep -q DISABLE_AUTOUPDATER "$settings" || die "$settings exists without DISABLE_AUTOUPDATER; add it by hand"
   echo "= $settings present"
 else
   as_t mkdir -p "$H/.claude"
@@ -111,11 +125,14 @@ else
 fi
 
 # 4. ledger: written only by the tenant, readable by READER through the home's --x.
+ledger=$H/.hearth/ledger.jsonl
+nolink "$H/.hearth" "$ledger"
 as_t mkdir -p "$H/.hearth"
-run chmod 755 "$H/.hearth"
-[ -e "$H/.hearth/ledger.jsonl" ] || as_t touch "$H/.hearth/ledger.jsonl"
-run chmod 644 "$H/.hearth/ledger.jsonl"
-[ $DRY = 1 ] || [ "$(stat -c %U "$H/.hearth/ledger.jsonl")" = "$T" ] || die "ledger not owned by $T"
+as_t chmod 755 "$H/.hearth"
+tq test -e "$ledger" || as_t touch "$ledger"
+nolink "$H/.hearth" "$ledger"
+as_t chmod 644 "$ledger"
+[ $DRY = 1 ] || [ "$(stat -c %U "$ledger")" = "$T" ] || die "ledger not owned by $T"
 
 # 5. check + inventory: ROOT-owned, outside every tenant's home. The judged party must not be able
 #    to edit its judge; check asserts this about itself (judge_not_tenant).

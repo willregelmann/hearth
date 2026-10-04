@@ -130,4 +130,26 @@ if [ -n "$inroot" ]; then echo "SKIP 12: runner is in root group $inroot, so sud
   l=$(sl); expect "sudo, fresh not-allowed attestation: passes" $(case "$l" in ABSENT*"root-side: not-allowed"*) echo 0;; *) echo 1;; esac) "$l"
 fi
 
+# 13. a link the tenant planted in its home stops provision, and its target is untouched. Runs
+# provision's step 4 (the ledger) on a scratch home, with the tenant played by the runner. A real
+# re-run is root acting on a tenant's home, and chmod follows links, so an unrefused
+# ledger.jsonl -> /etc/shadow would end up world-readable.
+step4=$(sed -n '/^# 4\. ledger/,/^# 5\./p' "$here/provision")
+nl=$(grep -E '^nolink\(\) ' "$here/provision")
+mkdir -p "$t/h13/.hearth" && printf 'secret\n' > "$t/target13" && chmod 600 "$t/target13"
+ln -s "$t/target13" "$t/h13/.hearth/ledger.jsonl"
+( DRY=0; T=$(id -un); H=$t/h13
+  run() { "$@"; }; as_t() { "$@"; }; tq() { "$@"; }; die() { echo "STOP: $*"; exit 1; }
+  eval "$nl"; eval "$step4" ) > "$t/out" 2>&1; rc=$?
+m=$(stat -c %a "$t/target13")
+expect "planted ledger link: provision STOPs, target stays 600" \
+  $(grep -q '^STOP: .*ledger.jsonl is a symlink' "$t/out" && [ $rc != 0 ] && [ "$m" = 600 ]; echo $?) \
+  "rc=$rc mode=$m: $(head -2 "$t/out" | tr '\n' ' ')"
+
+# 14. root runs nothing on a path inside the tenant's home except the home itself (step 2). Every
+# command naming a path under $H, or one derived from it, goes through as_t or tq.
+bad=$(grep -nE '^[[:space:]]*(run|install|chmod|chown|cmp|grep|cp|mv|ln|touch|setfacl)[[:space:]][^#]*("\$H/|\$(dst|vdir|link|settings|ledger)\b)' "$here/provision" \
+      | grep -vE 'as_t|tq ' || true)
+expect "no root command on a path under the tenant's home" $([ -z "$bad" ]; echo $?) "$bad"
+
 exit $fail
