@@ -129,6 +129,21 @@ for f in check inventory; do
   run install -o root -g root -m "$([ $f = check ] && echo 755 || echo 644)" "$here/$f" "$JUDGE/$f"
 done
 
+# 6. sudo, proved root-side (from inside, sudo can't tell no-rules from password-rules). Written
+#    last, so it is newer than any change this run made; check rejects it once any sudoers file is newer.
+run install -d -o root -g root -m 755 "$JUDGE/attest"
+if [ $DRY = 1 ]; then echo "+ sudo -l -U $T  -> $JUDGE/attest/$T.sudo"
+else
+  sl=$(LC_ALL=C sudo -l -U "$T" 2>&1 || true)
+  case "$sl" in
+    *"is not allowed to run sudo"*)
+      printf 'not-allowed %s sudo -l -U %s: %s\n' "$(date -u +%FT%TZ)" "$T" "$(echo "$sl" | head -n 1)" \
+        > "$JUDGE/attest/$T.sudo"
+      chmod 644 "$JUDGE/attest/$T.sudo";;
+    *) die "sudo -l -U $T did not say 'not allowed'; HOME declares no sudo. sudo said: $sl";;
+  esac
+fi
+
 cat <<EOF
 
 Provisioned $T, apart from the login. Next, as Will:

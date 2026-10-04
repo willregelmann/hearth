@@ -27,6 +27,7 @@ LEDGER="$HOME/.hearth/ledger.jsonl"
 REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant"
 # Membership in any of these is root without a sudoers rule. provision denies the same list.
 ROOT_GROUPS="sudo admin wheel docker lxd libvirt"
+ATTEST_DIR=/opt/hearth/home/attest; ATTEST_OWNER=root
 bad=0
 sha() { [ -r "$1" ] && sha256sum "$1" | cut -c1-64 || echo unreadable; }
 # Provenance, for a reader comparing runs. It is printed by the script, so a copy can fake it:
@@ -119,17 +120,25 @@ c_no_sudo() {
   for r in $ROOT_GROUPS; do
     case "$g" in *" $r "*) echo "in root-equivalent group $r:$g"; return 1;; esac
   done
-  # a sudoers rule needs no group, so ask sudo itself. Only its explicit refusal is green:
-  # under NoNewPrivileges (e.g. a hardened systemd unit) sudo -n -l also exits 1 without
-  # consulting sudoers at all, which proves nothing.
-  command -v sudo >/dev/null || { echo "groups:$g, no sudo binary"; return 0; }
-  out=$(LC_ALL=C sudo -n -l 2>&1); rc=$?
-  [ $rc = 0 ] && { echo "sudo -n -l lists rules: $(echo "$out" | tail -n 3 | tr '\n' ' ')"; return 1; }
-  case "$out" in
-    *"may not run sudo"*) echo "groups:$g, sudo refuses: $(echo "$out" | head -n 1)";;
-    *"password is required"*) echo "sudo has rules (asks for a password)"; return 1;;
-    *) echo "cannot determine sudo rights (rc $rc): $(echo "$out" | head -n 1)"; return 1;;
-  esac
+  # A sudoers rule needs no group. From inside, sudo 1.9.15 answers a user with NO rules and a user
+  # WITH password rules identically ("a password is required", rc 1; measured as refsdal and as
+  # will), and under NoNewPrivileges it doesn't read sudoers at all. So the tenant can only rule out
+  # NOPASSWD rules itself (sudo -n -l rc 0 lists them). "No rules" is proved root-side: provision runs
+  # `sudo -l -U <tenant>` and writes a root-owned attestation; it counts only while no sudoers file
+  # has changed since. (sudoers from LDAP/sssd isn't covered; this host has none.)
+  if command -v sudo >/dev/null; then
+    out=$(LC_ALL=C sudo -n -l 2>&1); rc=$?
+    [ $rc = 0 ] && { echo "sudo -n -l lists rules: $(echo "$out" | tail -n 3 | tr '\n' ' ')"; return 1; }
+  fi
+  att=$ATTEST_DIR/$USER.sudo
+  [ -f "$att" ] || { echo "no root-side attestation ($att): from inside, no-rules and password-rules look the same"; return 1; }
+  [ "$(owner_of "$att")" = "$ATTEST_OWNER" ] && [ "$(owner_of "$ATTEST_DIR")" = "$ATTEST_OWNER" ] \
+    || { echo "$att or its dir not owned by $ATTEST_OWNER"; return 1; }
+  grep -q '^not-allowed ' "$att" || { echo "attestation says: $(head -n 1 "$att")"; return 1; }
+  for f in /etc/sudoers /etc/sudoers.d /etc/sudoers.d/*; do
+    [ -e "$f" ] && [ "$f" -nt "$att" ] && { echo "$f changed after the attestation ($(head -n 1 "$att")); re-attest"; return 1; }
+  done
+  echo "groups:$g; root-side: $(head -n 1 "$att"); sudoers unchanged since"
 }
 c_declared_absent() { return 3; }
 # Inbound custody: can anyone else read the tenant's home? Any other login account in a

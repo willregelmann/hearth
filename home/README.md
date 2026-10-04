@@ -32,9 +32,19 @@ a systemd unit with NoNewPrivileges. Run it by path, not as `bash check`: its sh
 (`env -S -i`, coreutils 8.30 or later) is what strips the caller's environment, and `bash check`
 skips the shebang. check's PATH is only /usr/bin:/bin, so nothing the tenant can write chooses the
 judge's tools. claude is named by its full path, `~/.local/bin/claude`, where provision installs it.
-Under NoNewPrivileges sudo refuses before reading any rules, so the
-sudo line can only say "cannot determine". Custody needs a view of other users' real homes, which
+Under NoNewPrivileges sudo refuses before reading any rules. Custody needs a view of other users' real homes, which
 a ProtectHome sandbox hides.
+
+Sudo rules. From inside, sudo 1.9.15p5 gives "a password is required" (rc 1) both to a user with
+no rules and to one with password rules. Will measured this as refsdal (none) and as will (has
+rules), so the tenant can't prove "no rules" itself. It can only catch NOPASSWD rules (`sudo -n -l`
+rc 0). provision proves "no rules" from the root side: it runs `sudo -l -U <tenant>`, requires
+"is not allowed to run sudo", and writes the root-owned attestation
+`/opt/hearth/home/attest/<tenant>.sudo` as its last step. check's `sudo` line passes only with that
+file root-owned, saying `not-allowed`, and newer than /etc/sudoers and every file in
+/etc/sudoers.d. Any later sudoers edit turns it RED until provision re-attests. Not covered:
+sudoers from LDAP or sssd (none on this host). controls 12 runs all four arms, and removing either
+guard turns its control red (both ran).
 
 Root. Membership in sudo, admin, wheel, docker, lxd or libvirt is root without a sudoers rule.
 check's `sudo` line is RED for any of them, and provision refuses a tenant in one; the two lists

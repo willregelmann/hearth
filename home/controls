@@ -111,4 +111,21 @@ else
     $(grep -q "isn't in /var/lib/hearth/tenants" "$t/out" && [ $rc != 0 ]; echo $?) "rc=$rc: $(head -3 "$t/out" | tr '\n' ' ')"
 fi
 
+# 12. sudo needs a root-side attestation: missing, says-allowed and older-than-sudoers are RED;
+# a fresh not-allowed one is the only pass. Ownership is retargeted to the runner for the test.
+me=$(id -un); mkdir "$t/att"
+sed "s#^ATTEST_DIR=.*#ATTEST_DIR=$t/att; ATTEST_OWNER=$me#" "$t/check" > "$t/sa"; chmod +x "$t/sa"
+grep -q "^ATTEST_DIR=$t/att" "$t/sa" || { echo "FAIL could not retarget ATTEST_DIR"; fail=1; }
+cp "$here/inventory" "$t/inventory"
+sl() { "$t/sa" --no-model 2>&1 | grep -E '^[A-Z]+ +sudo '; }
+case "$(id -nG)" in *" sudo "*|*" admin "*|*" wheel "*|*" docker "*) echo "SKIP 12: runner is in a root group"; fail=1;; *)
+  l=$(sl); expect "sudo, no attestation: RED" $(case "$l" in "RED    sudo        no root-side attestation"*) echo 0;; *) echo 1;; esac) "$l"
+  echo "allowed (ALL) ALL" > "$t/att/$me.sudo"
+  l=$(sl); expect "sudo, attestation says allowed: RED" $(case "$l" in RED*"attestation says"*) echo 0;; *) echo 1;; esac) "$l"
+  echo "not-allowed test" > "$t/att/$me.sudo"; touch -d 2000-01-01 "$t/att/$me.sudo"
+  l=$(sl); expect "sudo, attestation older than sudoers: RED" $(case "$l" in RED*"changed after the attestation"*) echo 0;; *) echo 1;; esac) "$l"
+  touch "$t/att/$me.sudo"
+  l=$(sl); expect "sudo, fresh not-allowed attestation: passes" $(case "$l" in ABSENT*"root-side: not-allowed"*) echo 0;; *) echo 1;; esac) "$l";;
+esac
+
 exit $fail
