@@ -101,6 +101,21 @@ c_no_sudo() {
   esac
 }
 c_declared_absent() { return 3; }
+# the judged party must not be able to edit its judge: neither this script, the inventory, nor any
+# directory above them may be writable by the tenant. Tested with -w as the tenant, by effect.
+c_judge_not_tenant() {
+  w=""
+  for f in "$(readlink -f "$0")" "$(readlink -f "$INV")"; do
+    p=$f
+    while :; do
+      [ -w "$p" ] && w="$w $p"
+      [ "$p" = / ] && break
+      p=$(dirname "$p")
+    done
+  done
+  [ -z "$w" ] || { echo "writable by $USER:$(echo "$w" | tr ' ' '\n' | sort -u | tr '\n' ' ')"; return 1; }
+  echo "$(readlink -f "$0") and inventory not writable by $USER"
+}
 
 while IFS='|' read -r item kind owner issuer chk; do
   item=$(echo "$item" | xargs); chk=$(echo "$chk" | xargs); kind=$(echo "$kind" | xargs)

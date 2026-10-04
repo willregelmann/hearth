@@ -5,7 +5,9 @@
 #   sudo home/provision --dry-run buster  # print what it would do, change nothing
 #
 # Every step checks its own state first, so a re-run after a failure continues instead of
-# duplicating. It never deletes or overwrites a tenant's file: if something exists with the wrong
+# duplicating. One gap: if it dies between useradd and the marker write (the next command), a
+# re-run refuses the user as not its own. Then check by hand that /home/<tenant> is empty and
+# write the marker yourself, or userdel and start again. It never deletes or overwrites a tenant's file: if something exists with the wrong
 # owner or mode it stops and says so, and a person decides.
 #
 # Not automated, on purpose: the OAuth login. It's Will's credential (a loan from his Max account),
@@ -33,7 +35,7 @@ die() { echo "STOP: $*" >&2; exit 1; }
 
 # 1. user: own primary group, plus agents. Only a user this script created may be touched again:
 #    an existing user without the marker is someone's home, and provision would strip its ACLs.
-MARK=.hearth/provisioned-by-hearth
+MARK=.hearth-provisioned          # root-owned, in the home's top level: written by the very next command
 if getent passwd "$T" >/dev/null; then
   Hx=$(getent passwd "$T" | cut -d: -f6)
   [ -e "$Hx/$MARK" ] || die "user $T exists and wasn't created by provision (no $Hx/$MARK); refusing to touch it"
@@ -42,7 +44,6 @@ if getent passwd "$T" >/dev/null; then
 else
   run useradd --create-home --user-group --groups "$EXTRA_GROUPS" --shell /bin/bash "$T"
   Hx=$(getent passwd "$T" | cut -d: -f6 || true); Hx=${Hx:-/home/$T}
-  run install -d -o "$T" -g "$T" -m 755 "$Hx/.hearth"
   [ $DRY = 1 ] && echo "+ write $Hx/$MARK" || date -u +%FT%TZ > "$Hx/$MARK"
 fi
 for g in $(echo "$EXTRA_GROUPS" | tr ',' ' '); do
@@ -96,20 +97,28 @@ run chmod 755 "$H/.hearth"
 run chmod 644 "$H/.hearth/ledger.jsonl"
 [ $DRY = 1 ] || [ "$(stat -c %U "$H/.hearth/ledger.jsonl")" = "$T" ] || die "ledger not owned by $T"
 
-# 5. check + inventory: the tenant's own copy, so no other agent can edit what it's judged by
+# 5. check + inventory: ROOT-owned, outside every tenant's home. The judged party must not be able
+#    to edit its judge; check asserts this about itself (judge_not_tenant).
+JUDGE=/opt/hearth/home
 here=$(cd "$(dirname "$0")" && pwd)
-as_t mkdir -p "$H/hearth/home"
+run install -d -o root -g root -m 755 /opt/hearth "$JUDGE"
 for f in check inventory; do
-  run install -o "$T" -g "$T" -m "$([ $f = check ] && echo 755 || echo 644)" "$here/$f" "$H/hearth/home/$f"
+  if [ -e "$JUDGE/$f" ] && ! cmp -s "$here/$f" "$JUDGE/$f"; then
+    die "$JUDGE/$f exists and differs from $here/$f (another revision?); replace it by hand"
+  fi
+  run install -o root -g root -m "$([ $f = check ] && echo 755 || echo 644)" "$here/$f" "$JUDGE/$f"
 done
 
 cat <<EOF
 
 Provisioned $T, apart from the login. Next, as Will:
   1. sudo -iu $T claude          # then /login, and choose the Max account (the declared loan)
-  2. sudo -iu $T ./hearth/home/check     # -i starts in /home/$T; don't write ~ (Will's shell expands it)
+  2. sudo -iu $T $JUDGE/check
      It must be GREEN apart from memory/sudo (ABSENT, declared). Any RED, stop and send it to Foil.
-  3. Custody, from outside (check can't prove it from inside a sandbox):
-     sudo -u foil ls /home/$T ; sudo -u refsdal ls /home/$T    # both must fail
-     sudo -u $T ls /home/foil /home/refsdal                     # must fail (will has --x on foil's; that's will's, not $T's)
+  3. Custody, from outside (check can't prove it from inside a sandbox). Every line must FAIL:
+     sudo -u foil ls /home/$T ; sudo -u refsdal ls /home/$T                    # read
+     sudo -u foil stat /home/$T/.hearth/ledger.jsonl                           # traverse (--x reach)
+     sudo -u refsdal stat /home/$T/.hearth/ledger.jsonl
+     sudo -u $T ls /home/foil /home/refsdal ; sudo -u $T stat /home/foil/agent-health
+     (will CAN stat /home/$T/.hearth/ledger.jsonl: that's the declared u:will:--x.)
 EOF

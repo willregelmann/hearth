@@ -13,3 +13,4 @@ ledger      | own    | tenant      | turn runner              | ledger_writable
 custody     | own    | tenant      | OS user boundary         | others_unreadable
 memory      | absent | -           | -                        | declared_absent
 sudo        | absent | -           | -                        | no_sudo
+judge       | own    | root        | provision (/opt/hearth)  | judge_not_tenant
