@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# home/provision — run by Will with sudo. Creates a tenant from home/inventory and nothing else.
+#
+#   sudo home/provision buster            # do it
+#   sudo home/provision --dry-run buster  # print what it would do, change nothing
+#
+# Every step checks its own state first, so a re-run after a failure continues instead of
+# duplicating. One gap: if it dies between useradd and the registry write (the next command), a
+# re-run refuses the user as not its own. Then check by hand that /home/<tenant> is empty and
+# write its uid to /var/lib/hearth/tenants/<tenant> as root, or userdel and start again. It never deletes or overwrites a tenant's file: if something exists with the wrong
+# owner or mode it stops and says so, and a person decides.
+#
+# Not automated, on purpose: the OAuth login. It's Will's credential (a loan from his Max account),
+# so provision prints the command and Will runs it himself.
+#
+# Choices this follows (asked of Will; changing any of them is a small edit):
+#   - Claude Code per tenant, copied from Will's pinned native install, with auto-update off
+#   - memory declared absent in v0
+#   - no sudo for the tenant
+set -euo pipefail
+
+DRY=0; [ "${1:-}" = "--dry-run" ] && { DRY=1; shift; }
+T=${1:?usage: provision [--dry-run] <tenant>}
+CLAUDE_VERSION=2.1.288
+CLAUDE_SRC=/home/will/.local/share/claude/versions/$CLAUDE_VERSION
+EXTRA_GROUPS=agents
+READER=will                       # gets --x on the home, so it can read the published ledger
+
+case "$T" in *[!a-z0-9_-]*|'') echo "bad tenant name: $T" >&2; exit 2;; esac
+[ $DRY = 1 ] || [ "$(id -u)" = 0 ] || { echo "run with sudo" >&2; exit 2; }
+
+run() { echo "+ $*"; [ $DRY = 1 ] || "$@"; }
+as_t() { run sudo -u "$T" -H "$@"; }
+die() { echo "STOP: $*" >&2; exit 1; }
+# Inside the tenant's home, root does nothing. On a re-run the tenant has had the home and can have
+# planted symlinks; chmod/install/cmp/grep as root would follow them to any file on the host. So every
+# write under $H runs as the tenant (as_t) and every read or test runs as the tenant too (tq; in a dry
+# run, as the caller, read only). A link can then only reach what the tenant could reach anyway.
+# nolink refuses links outright, so a planted link is a STOP that a person sees, not a silent EPERM.
+tq() { if [ $DRY = 1 ]; then "$@"; else sudo -u "$T" -H "$@"; fi; }
+nolink() { local p; for p; do [ -L "$p" ] && die "$p is a symlink; provision doesn't follow links in a tenant's home"; done; return 0; }
+
+# Only a user this script created may be touched again: an existing user it didn't create is
+# someone's home, and provision would strip its ACLs. The record lives in a root-owned registry
+# outside every home, holding the uid, so no tenant or other agent can forge or delete it (a marker
+# inside the home could be made by its owner). This refusal reads only, so it comes first: it
+# holds even on a host that would fail the prerequisites below.
+REG=/var/lib/hearth/tenants      # REG/<tenant> holds the uid, written by the command after useradd
+registered() {                   # root-owned, not writable by anyone else, and naming this uid
+  local f=$REG/$1
+  [ -f "$f" ] && [ ! -L "$f" ] && [ "$(stat -c %U "$f")" = root ] && [ "$(stat -c %U "$REG")" = root ] \
+    && [ $(( 8#$(stat -c %a "$f") & 8#022 )) = 0 ] && [ $(( 8#$(stat -c %a "$REG") & 8#022 )) = 0 ] \
+    && [ "$(cat "$f")" = "$(id -u "$1")" ]
+}
+if getent passwd "$T" >/dev/null; then
+  registered "$T" || die "user $T exists and isn't in $REG with its uid (provision didn't create it); refusing to touch it"
+fi
+
+# 0. host prerequisites, before any change: provision needs setfacl, and check needs getfacl and an
+#    env that takes -S. A missing one is a stop here, not a failure halfway through.
+for c in setfacl getfacl; do
+  PATH=/usr/bin:/bin command -v "$c" >/dev/null || die "$c not found in /usr/bin:/bin (install the acl package)"
+done
+/usr/bin/env -S -i /bin/true 2>/dev/null || die "/usr/bin/env has no -S (check's shebang needs coreutils 8.30 or later)"
+
+# 1. user: own primary group, plus agents.
+if getent passwd "$T" >/dev/null; then
+  [ "$(id -gn "$T")" = "$T" ] || die "user $T exists with primary group $(id -gn "$T")"
+  echo "= user $T exists (registered)"
+else
+  run install -d -o root -g root -m 755 /var/lib/hearth "$REG"
+  run useradd --create-home --user-group --groups "$EXTRA_GROUPS" --shell /bin/bash "$T"
+  [ $DRY = 1 ] && echo "+ write $REG/$T (uid)" || { umask 022; id -u "$T" > "$REG/$T"; }
+fi
+for g in $(echo "$EXTRA_GROUPS" | tr ',' ' '); do
+  id -nG "$T" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" || run usermod -aG "$g" "$T"
+done
+H=$(getent passwd "$T" | cut -d: -f6 || true); H=${H:-/home/$T}
+
+# sudo: the tenant must not be in a root-equivalent group (docker, lxd and libvirt give root with no
+# sudoers rule). Same list as check's ROOT_GROUPS. Rules in sudoers are checked by home/check.
+for g in sudo admin wheel docker lxd libvirt; do
+  id -nG "$T" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" && die "$T is in group $g, which is root; HOME declares no sudo"
+done
+
+# 2. home: tenant-owned, group/other nothing, exactly one ACL entry (READER traverse).
+run chown "$T:$T" "$H"
+run chmod 700 "$H"
+run setfacl -b "$H"
+run setfacl -m "u:$READER:--x" "$H"
+
+# 3. Claude Code, the tenant's own copy of the pinned version.
+if [ ! -x "$CLAUDE_SRC" ]; then
+  [ $DRY = 1 ] && echo "! (dry run) $CLAUDE_SRC not visible from here" || \
+    die "$CLAUDE_SRC not found; is Will's install still at $CLAUDE_VERSION?"
+fi
+vdir=$H/.local/share/claude/versions
+dst=$vdir/$CLAUDE_VERSION
+link=$H/.local/bin/claude
+nolink "$H/.local" "$H/.local/share" "$H/.local/share/claude" "$vdir" "$dst" "$H/.local/bin"
+if tq test -e "$dst"; then
+  tq cmp -s - "$dst" < "$CLAUDE_SRC" || die "$dst exists and differs from $CLAUDE_SRC"
+  echo "= $dst present"
+else
+  as_t mkdir -p "$vdir" "$H/.local/bin"
+  nolink "$H/.local" "$H/.local/share" "$H/.local/share/claude" "$vdir" "$H/.local/bin"
+  # root only opens the source; the tenant writes the copy (to a temp name, so a failed copy never
+  # looks like a finished one)
+  [ $DRY = 1 ] && echo "+ copy $CLAUDE_SRC -> $dst (written by $T)" || \
+    sudo -u "$T" -H sh -c 'umask 022; cat > "$1.part" && chmod 755 "$1.part" && mv "$1.part" "$1"' sh "$dst" < "$CLAUDE_SRC"
+fi
+if [ -L "$link" ] && [ "$(readlink "$link")" = "$dst" ]; then echo "= $link ok"
+elif [ -e "$link" ] || [ -L "$link" ]; then die "$link exists and isn't the pinned link"
+else as_t ln -s "$dst" "$link"; fi
+# pin: stop the background updater (believed: DISABLE_AUTOUPDATER in settings env; check proves the version)
+settings=$H/.claude/settings.json
+nolink "$H/.claude" "$settings"
+if tq test -e "$settings"; then
+  tq grep -q DISABLE_AUTOUPDATER "$settings" || die "$settings exists without DISABLE_AUTOUPDATER; add it by hand"
+  echo "= $settings present"
+else
+  as_t mkdir -p "$H/.claude"
+  [ $DRY = 1 ] && echo "+ write $settings" || \
+    sudo -u "$T" -H sh -c "umask 077; printf '%s\n' '{\"env\": {\"DISABLE_AUTOUPDATER\": \"1\"}}' > '$settings'"
+fi
+
+# 4. ledger: written only by the tenant, readable by READER through the home's --x.
+ledger=$H/.hearth/ledger.jsonl
+nolink "$H/.hearth" "$ledger"
+as_t mkdir -p "$H/.hearth"
+as_t chmod 755 "$H/.hearth"
+tq test -e "$ledger" || as_t touch "$ledger"
+nolink "$H/.hearth" "$ledger"
+as_t chmod 644 "$ledger"
+[ $DRY = 1 ] || [ "$(stat -c %U "$ledger")" = "$T" ] || die "ledger not owned by $T"
+
+# 5. check + inventory: ROOT-owned, outside every tenant's home. The judged party must not be able
+#    to edit its judge; check asserts this about itself (judge_not_tenant).
+JUDGE=/opt/hearth/home
+here=$(cd "$(dirname "$0")" && pwd)
+run install -d -o root -g root -m 755 /opt/hearth "$JUDGE"
+for f in check inventory; do
+  if [ -e "$JUDGE/$f" ] && ! cmp -s "$here/$f" "$JUDGE/$f"; then
+    die "$JUDGE/$f exists and differs from $here/$f (another revision?); replace it by hand"
+  fi
+  run install -o root -g root -m "$([ $f = check ] && echo 755 || echo 644)" "$here/$f" "$JUDGE/$f"
+done
+
+# 6. sudo, proved root-side (from inside, sudo can't tell no-rules from password-rules). Written
+#    last, so it is newer than any change this run made; check rejects it once any sudoers file is newer.
+run install -d -o root -g root -m 755 "$JUDGE/attest"
+if [ $DRY = 1 ]; then echo "+ sudo -l -U $T  -> $JUDGE/attest/$T.sudo"
+else
+  sl=$(LC_ALL=C sudo -l -U "$T" 2>&1 || true)
+  case "$sl" in
+    *"is not allowed to run sudo"*)
+      printf 'not-allowed %s sudo -l -U %s: %s\n' "$(date -u +%FT%TZ)" "$T" "$(echo "$sl" | head -n 1)" \
+        > "$JUDGE/attest/$T.sudo"
+      chmod 644 "$JUDGE/attest/$T.sudo";;
+    *) die "sudo -l -U $T did not say 'not allowed'; HOME declares no sudo. sudo said: $sl";;
+  esac
+fi
+
+cat <<EOF
+
+Provisioned $T, apart from the login. Next, as Will:
+  1. sudo -iu $T claude          # then /login, and choose the Max account (the declared loan)
+  2. sudo -iu $T $JUDGE/check
+     It must be GREEN apart from memory/sudo (ABSENT, declared) and custody_in (KNOWN while any
+     other account has root). Any RED, stop and send it to Foil.
+  3. Custody, from outside (check can't prove it from inside a sandbox). Every line must FAIL:
+     sudo -u foil ls /home/$T ; sudo -u refsdal ls /home/$T                    # read
+     sudo -u foil stat /home/$T/.hearth/ledger.jsonl                           # traverse (--x reach)
+     sudo -u refsdal stat /home/$T/.hearth/ledger.jsonl
+     sudo -u $T ls /home/foil /home/refsdal ; sudo -u $T stat /home/foil/agent-health
+     (will CAN stat /home/$T/.hearth/ledger.jsonl: that's the declared u:will:--x.)
+EOF

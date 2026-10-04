@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# home/controls — positive and negative controls for check's inventory guards.
+# Runs a temporary copy of check against temporary inventories, with --no-model, and asserts only
+# the guard lines (environment-dependent items like custody or sudo are ignored). Exits non-zero
+# if any guard stopped working. Needs no provisioned tenant; any user can run it.
+set -u
+here=$(dirname "$(readlink -f "$0")")
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+fail=0
+# check with its fixed inventory path pointed at a scratch file
+sed "s#^DEFAULT_INV=/opt/hearth/home/inventory#DEFAULT_INV=$t/inventory#" "$here/check" > "$t/check"
+grep -q "^DEFAULT_INV=$t/inventory" "$t/check" || { echo "FAIL could not retarget DEFAULT_INV"; exit 1; }
+chmod +x "$t/check"
+nreq=$(grep -oE '^REQUIRED="[^"]*"' "$here/check" | tr -cd ' ' | wc -c); nreq=$((nreq + 1))
+
+run() { "$1" --no-model > "$t/out" 2>&1; echo $?; }
+expect() { # name, condition-result (0 = held), detail
+  if [ "$2" = 0 ]; then echo "ok   $1"; else echo "FAIL $1: $3"; fail=1; fi
+}
+
+# 1. populated installed list: no guard fires (so the guards don't RED a correct list)
+cp "$here/inventory" "$t/inventory"; run "$t/check" >/dev/null
+n=$(grep -cE 'required as|missing or unreadable|not the installed inventory' "$t/out")
+expect "populated inventory: no guard line" $([ "$n" = 0 ]; echo $?) "$n guard lines: $(grep -E 'required as|missing' "$t/out")"
+
+# 2. empty list: every required item RED, run fails
+: > "$t/inventory"; rc=$(run "$t/check")
+n=$(grep -c 'required as' "$t/out")
+expect "empty inventory: $nreq required REDs, rc!=0" $([ "$n" = "$nreq" ] && [ "$rc" != 0 ]; echo $?) "n=$n rc=$rc"
+
+# 3. missing list: says so, run fails
+rm -f "$t/inventory"; rc=$(run "$t/check")
+expect "missing inventory: RED, rc!=0" $(grep -q 'missing or unreadable' "$t/out" && [ "$rc" != 0 ]; echo $?) "rc=$rc"
+
+# 4. a required item given a weaker check: RED for that item
+sed 's/no_sudo$/declared_absent/' "$here/inventory" > "$t/inventory"; rc=$(run "$t/check")
+expect "sudo swapped to declared_absent: RED, rc!=0" \
+  $(grep -q '^RED    sudo        required as' "$t/out" && [ "$rc" != 0 ]; echo $?) "rc=$rc"
+
+# 5. some other inventory path: never passes
+cp "$here/inventory" "$t/other"; "$t/check" --no-model "$t/other" > "$t/out" 2>&1; rc=$?
+expect "non-installed inventory: RED, rc!=0" \
+  $(grep -q 'not the installed inventory' "$t/out" && [ "$rc" != 0 ]; echo $?) "rc=$rc"
+
+# 6. the controls can fail: with the required loop deleted, control 2 must no longer hold
+sed '/^for r in \$REQUIRED/,/^done$/d' "$t/check" > "$t/broken"; chmod +x "$t/broken"
+: > "$t/inventory"; run "$t/broken" >/dev/null
+n=$(grep -c 'required as' "$t/out")
+expect "guard deleted: control 2 would catch it" $([ "$n" != "$nreq" ]; echo $?) "still $n required lines"
+
+# 7. nothing from the caller's environment reaches check: a BASH_ENV file (sourced by bash before
+# the first line) and a planted `stat` first on PATH must both stay silent
+mkdir -p "$t/bin"; printf '#!/bin/sh\necho PLANTED-PATH\n' > "$t/bin/stat"; chmod +x "$t/bin/stat"
+printf 'echo PLANTED-BASH_ENV\n' > "$t/env"
+cp "$here/inventory" "$t/inventory"
+BASH_ENV="$t/env" PATH="$t/bin:$PATH" HOME_CHECK_CLEAN=1 "$t/check" --no-model > "$t/out" 2>&1
+expect "caller env (BASH_ENV, PATH) doesn't reach check" $(! grep -q PLANTED "$t/out"; echo $?) \
+  "$(grep PLANTED "$t/out" | sort -u | tr '\n' ' ')"
+
+# 8. the tenant's own ~/.local/bin can't shadow the judge's tools. This plants a `stat` in the
+# real ~/.local/bin of whoever runs controls, so it is skipped if one is already there, and the
+# plant is removed on exit.
+plant="$HOME/.local/bin/stat"
+if [ -e "$plant" ]; then
+  echo "SKIP tenant-shadowed tool: $plant already exists, so nothing was tested"; fail=1
+else
+  mkdir -p "$HOME/.local/bin"; printf '#!/bin/sh\necho PLANTED-HOME\n' > "$plant"; chmod +x "$plant"
+  trap 'rm -f "$plant"; rm -rf "$t"' EXIT
+  "$t/check" --no-model > "$t/out" 2>&1; rm -f "$plant"
+  expect "tenant ~/.local/bin doesn't shadow check's tools" $(! grep -q PLANTED "$t/out"; echo $?) \
+    "$(grep PLANTED "$t/out" | sort -u | tr '\n' ' ')"
+fi
+
+# 9. root-equivalent groups: a group the runner is in, added to ROOT_GROUPS, turns sudo RED; and
+# provision denies exactly check's list (a relationship, so neither can drift without the other).
+mine=$(id -gn)
+sed "s/^ROOT_GROUPS=\"/ROOT_GROUPS=\"$mine /" "$t/check" > "$t/rg"; chmod +x "$t/rg"
+cp "$here/inventory" "$t/inventory"; "$t/rg" --no-model > "$t/out" 2>&1
+expect "member of a ROOT_GROUPS group: sudo RED" $(grep -q "^RED    sudo        in root-equivalent group $mine" "$t/out"; echo $?) \
+  "$(grep '^[A-Z]* *sudo ' "$t/out")"
+cg=$(grep -oE '^ROOT_GROUPS="[^"]*"' "$here/check" | cut -d'"' -f2 | tr ' ' '\n' | sort | xargs)
+pg=$(grep -oE '^for g in [a-z ]+; do$' "$here/provision" | sed -n 's/^for g in \(.*\); do$/\1/p' \
+     | grep -w docker | tr ' ' '\n' | sort | xargs)
+expect "provision denies check's ROOT_GROUPS ($cg)" $([ -n "$cg" ] && [ "$cg" = "$pg" ]; echo $?) \
+  "check [$cg], provision [$pg]"
+
+# 10. inbound custody is KNOWN or RED, never GREEN, and KNOWN alone doesn't fail the run
+printf 'custody_in | own | tenant | OS user boundary | inbound_custody\n' > "$t/inventory"
+sed 's/^REQUIRED=".*"$/REQUIRED="custody_in:inbound_custody"/' "$t/check" > "$t/ci"; chmod +x "$t/ci"
+"$t/ci" --no-model > "$t/out" 2>&1; rc=$?
+line=$(grep -E '^[A-Z]+ +custody_in' "$t/out")
+case "$line" in
+  KNOWN*) expect "inbound custody KNOWN, run passes (rc 0)" $([ $rc = 0 ]; echo $?) "rc=$rc: $line";;
+  RED*)   expect "inbound custody RED, run fails" $([ $rc != 0 ]; echo $?) "rc=$rc: $line";;
+  *)      expect "inbound custody never GREEN" 1 "$line";;
+esac
+sed 's/^ROOT_GROUPS=".*"$/ROOT_GROUPS=""/' "$t/ci" > "$t/ci0"; chmod +x "$t/ci0"
+"$t/ci0" --no-model > "$t/out" 2>&1; rc=$?
+expect "no root account found: RED (unverified), not GREEN" \
+  $(grep -q '^RED    custody_in  .*unverified' "$t/out" && [ $rc != 0 ]; echo $?) "rc=$rc: $(grep custody_in "$t/out")"
+
+# 11. a provisioning marker the runner plants in its own home doesn't make provision touch it.
+# Runs provision --dry-run on the runner's own account (changes nothing). Skipped is a failure.
+mark="$HOME/.hearth-provisioned"
+if [ -e "$mark" ]; then
+  echo "SKIP forged marker: $mark already exists, so nothing was tested"; fail=1
+else
+  : > "$mark"
+  "$here/provision" --dry-run "$(id -un)" > "$t/out" 2>&1; rc=$?; rm -f "$mark"
+  expect "forged in-home marker: provision refuses (not in registry)" \
+    $(grep -q "isn't in /var/lib/hearth/tenants" "$t/out" && [ $rc != 0 ]; echo $?) "rc=$rc: $(head -3 "$t/out" | tr '\n' ' ')"
+fi
+
+# 12. sudo needs a root-side attestation: missing, says-allowed and older-than-sudoers are RED;
+# a fresh not-allowed one is the only pass. Ownership is retargeted to the runner for the test.
+me=$(id -un); mkdir "$t/att"
+sed "s#^ATTEST_DIR=.*#ATTEST_DIR=$t/att; ATTEST_OWNER=$me#" "$t/check" > "$t/sa"; chmod +x "$t/sa"
+grep -q "^ATTEST_DIR=$t/att" "$t/sa" || { echo "FAIL could not retarget ATTEST_DIR"; fail=1; }
+cp "$here/inventory" "$t/inventory"
+sl() { "$t/sa" --no-model 2>&1 | grep -E '^[A-Z]+ +sudo '; }
+rg=$(grep -oE '^ROOT_GROUPS="[^"]*"' "$here/check" | cut -d'"' -f2); inroot=""
+for r in $rg; do case " $(id -nG) " in *" $r "*) inroot=$r;; esac; done
+if [ -n "$inroot" ]; then echo "SKIP 12: runner is in root group $inroot, so sudo is RED before the attestation is read"; fail=1; else
+  l=$(sl); expect "sudo, no attestation: RED" $(case "$l" in "RED    sudo        no root-side attestation"*) echo 0;; *) echo 1;; esac) "$l"
+  echo "allowed (ALL) ALL" > "$t/att/$me.sudo"
+  l=$(sl); expect "sudo, attestation says allowed: RED" $(case "$l" in RED*"attestation says"*) echo 0;; *) echo 1;; esac) "$l"
+  echo "not-allowed test" > "$t/att/$me.sudo"; touch -d 2000-01-01 "$t/att/$me.sudo"
+  l=$(sl); expect "sudo, attestation older than sudoers: RED" $(case "$l" in RED*"changed after the attestation"*) echo 0;; *) echo 1;; esac) "$l"
+  touch "$t/att/$me.sudo"
+  l=$(sl); expect "sudo, fresh not-allowed attestation: passes" $(case "$l" in ABSENT*"root-side: not-allowed"*) echo 0;; *) echo 1;; esac) "$l"
+fi
+
+# 13. a link the tenant planted in its home stops provision, and its target is untouched. Runs
+# provision's step 4 (the ledger) on a scratch home, with the tenant played by the runner. A real
+# re-run is root acting on a tenant's home, and chmod follows links, so an unrefused
+# ledger.jsonl -> /etc/shadow would end up world-readable.
+step4=$(sed -n '/^# 4\. ledger/,/^# 5\./p' "$here/provision")
+nl=$(grep -E '^nolink\(\) ' "$here/provision")
+mkdir -p "$t/h13/.hearth" && printf 'secret\n' > "$t/target13" && chmod 600 "$t/target13"
+ln -s "$t/target13" "$t/h13/.hearth/ledger.jsonl"
+( DRY=0; T=$(id -un); H=$t/h13
+  run() { "$@"; }; as_t() { "$@"; }; tq() { "$@"; }; die() { echo "STOP: $*"; exit 1; }
+  eval "$nl"; eval "$step4" ) > "$t/out" 2>&1; rc=$?
+m=$(stat -c %a "$t/target13")
+expect "planted ledger link: provision STOPs, target stays 600" \
+  $(grep -q '^STOP: .*ledger.jsonl is a symlink' "$t/out" && [ $rc != 0 ] && [ "$m" = 600 ]; echo $?) \
+  "rc=$rc mode=$m: $(head -2 "$t/out" | tr '\n' ' ')"
+
+# 14. root runs nothing on a path inside the tenant's home except the home itself (step 2). Every
+# command naming a path under $H, or one derived from it, goes through as_t or tq.
+bad=$(grep -nE '^[[:space:]]*(run|install|chmod|chown|cmp|grep|cp|mv|ln|touch|setfacl)[[:space:]][^#]*("\$H/|\$(dst|vdir|link|settings|ledger)\b)' "$here/provision" \
+      | grep -vE 'as_t|tq ' || true)
+expect "no root command on a path under the tenant's home" $([ -z "$bad" ]; echo $?) "$bad"
+
+exit $fail
