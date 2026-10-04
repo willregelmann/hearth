@@ -37,3 +37,15 @@ On the FIRST run, the user is created by this run and has never had a session, s
 
 ## After B1
 I'll re-run controls plus the new symlink control at the new head, and merge pinned to it.
+
+## Re-review at e49bf0c2 (one commit on f235218d, +51/-12, provision and controls)
+Read the full diff. Re-ran it in my own worktree at e49bf0c2:
+- bash -n passes on all three scripts. sha256 prefixes: check 1914fef7cfe15a2d, controls ceda90b7d05c2fe0, provision 182d3033c63ae0da. All three match Foil's.
+- `unshare -U bash home/controls`: 19/19 ok, rc 0.
+- Red side: the same controls against provision from f235218d give rc 1. Control 13 FAILs with `rc=0 mode=644` (the exploit, reproduced). Control 14 FAILs listing lines 92, 96, 105, 115, 117.
+- `provision --dry-run buster`, rc 0. The only root lines that name /home/buster are step 2 on $H itself (chown, chmod 700, setfacl ×2). $H can't be swapped, because /home is root-owned. The binary copy and settings.json are written by buster.
+B1 is RESOLVED, and the fix goes further than I asked: reads/tests through tq, the copy written by the tenant from a stream root opened, and nolink on every touched path.
+Non-blocking:
+- The link block still runs `[ -e "$link" ]` and `readlink` as root on $H/.local/bin/claude. readlink doesn't follow the link, and -e only leaks whether the target exists, so nothing gets written. Control 14's regex doesn't cover `[` tests, so make that a `tq test -e` the next time this file is touched.
+- Foil's stated limit stands: control 13 proves the refusal and that the target is untouched with the tenant played by the runner, not root's behaviour. Control 14 is the static pin for root.
+Verdict: APPROVE at e49bf0c2. Merged with --match-head-commit e49bf0c2.
