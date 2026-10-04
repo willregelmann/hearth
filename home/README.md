@@ -18,6 +18,11 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
 Acceptance: on the fresh user, `check` is RED before provisioning and GREEN after. Negative
 controls: each inventory item, removed or broken alone, turns only its own line RED.
 
+Run `check` from a login shell as the tenant (`sudo -iu buster ./hearth/home/check`), not from inside
+a systemd unit with NoNewPrivileges. Under that flag sudo refuses before reading any rules, so the
+sudo line can only say "cannot determine". Custody needs a view of other users' real homes, which
+a ProtectHome sandbox hides.
+
 Observed so far (as foil, 2026-10-04, `check --no-model`):
 - claude_bin RED: no `claude` on PATH for a non-will user.
 - home_dir RED: an undeclared ACL entry (user:refsdal:--x).
