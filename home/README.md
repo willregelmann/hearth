@@ -25,6 +25,18 @@ a systemd unit with NoNewPrivileges. Under that flag sudo refuses before reading
 sudo line can only say "cannot determine". Custody needs a view of other users' real homes, which
 a ProtectHome sandbox hides.
 
+Accepted results. Only a run that an operator starts, of the installed absolute path, counts as a
+result. Output a tenant produced and pasted is not a pass, however it reads: every line of a copy
+is editable, including any guard inside it, so a result with no independent record is a missing
+measurement. Inside the script, two things narrow what a copy can do without replacing that rule:
+- the inventory path is fixed at /opt/hearth/home/inventory, so a copy still reads the installed
+  list, and stripping its own copy of the inventory does nothing;
+- the first line prints the path and sha256 of the check and the inventory. A copy can fake that
+  line too. It helps an honest reader spot a copy and doesn't stop a dishonest one.
+
+A missing, unreadable or empty inventory is RED, not a pass over nothing. So is an inventory that
+leaves out user, home_dir, custody, sudo or judge, or gives one of them a different check.
+
 Observed so far (as foil, 2026-10-04, `check --no-model`):
 - claude_bin RED: no `claude` on PATH for a non-will user.
 - home_dir RED: an undeclared ACL entry (user:refsdal:--x).

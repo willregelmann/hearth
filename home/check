@@ -12,14 +12,28 @@ if [ -z "${HOME_CHECK_CLEAN:-}" ]; then
 fi
 
 NO_MODEL=0; [ "${1:-}" = "--no-model" ] && { NO_MODEL=1; shift; }
-DEFAULT_INV=$(dirname "$(readlink -f "$0")")/inventory
+# Fixed, not derived from $0: a copy of this script in the tenant's home still reads the installed
+# list, so stripping lines from its own copy of the inventory achieves nothing.
+DEFAULT_INV=/opt/hearth/home/inventory
 INV=${1:-$DEFAULT_INV}
 LEDGER="$HOME/.hearth/ledger.jsonl"
+# Items the run must contain, with the check each must use, whatever the list says: an inventory that
+# drops one, or swaps its check for a weaker one (e.g. declared_absent), can't pass.
+REQUIRED="user:user_exists home_dir:home_private custody:others_unreadable sudo:no_sudo judge:judge_not_tenant"
 bad=0
+sha() { [ -r "$1" ] && sha256sum "$1" | cut -c1-64 || echo unreadable; }
+# Provenance, for a reader comparing runs. It is printed by the script, so a copy can fake it:
+# it helps an honest reader spot a copy, it does not stop a dishonest one (README: accepted results).
+printf 'check %s sha256 %s | inventory %s sha256 %s\n' \
+  "$(readlink -f "$0")" "$(sha "$(readlink -f "$0")")" "$INV" "$(sha "$INV")"
 # Any other inventory is for negative controls only: its lines are reported, but the run can never
 # pass, or a tenant could grade itself against a list without the judge line (or with nothing in it).
-if [ "$(readlink -f "$INV")" != "$DEFAULT_INV" ]; then
+if [ "$(readlink -m "$INV")" != "$DEFAULT_INV" ]; then
   printf 'RED    %-11s not the installed inventory (%s); result is for negative controls only\n' inventory "$INV"
+  bad=1
+fi
+if [ ! -r "$INV" ]; then
+  printf 'RED    %-11s %s is missing or unreadable\n' inventory "$INV"
   bad=1
 fi
 
@@ -124,10 +138,12 @@ c_judge_not_tenant() {
   echo "$(readlink -f "$0") and inventory not writable by $USER"
 }
 
+seen=" "
 while IFS='|' read -r item kind owner issuer chk; do
   item=$(echo "$item" | xargs); chk=$(echo "$chk" | xargs); kind=$(echo "$kind" | xargs)
   case "$item" in ''|\#*) continue;; esac
   arg=""; case "$chk" in *:*) arg=${chk#*:}; chk=${chk%%:*};; esac
+  seen="$seen$item:$chk "
   fn="c_$chk"
   if ! declare -F "$fn" >/dev/null; then printf 'RED    %-11s unknown check %s\n' "$item" "$chk"; bad=1; continue; fi
   msg=$($fn "$arg" 2>&1); rc=$?
@@ -138,5 +154,9 @@ while IFS='|' read -r item kind owner issuer chk; do
     3) printf 'ABSENT %-11s declared absent %s\n' "$item" "$msg";;
     *) printf 'RED    %-11s %s\n' "$item" "$msg"; bad=1;;
   esac
-done < "$INV"
+done < <([ -r "$INV" ] && cat "$INV")
+# A filter over an empty set comes back clean whatever it asked, so absence is RED, item by item.
+for r in $REQUIRED; do
+  case "$seen" in *" $r "*) ;; *) printf 'RED    %-11s required as %s, not in the inventory that way\n' "${r%%:*}" "$r"; bad=1;; esac
+done
 exit $bad
