@@ -1,0 +1,15 @@
+# HOME inventory, v0 (draft, Buster). One item per line:
+#   item | kind | owner | issuer | check
+# kind:  own | loan | absent   (absent = declared not present; check reports it, never green)
+# check: a key understood by home/check. Each check runs AS THE TENANT under env -i.
+#
+# Anything the tenant needs that is not listed here is a HOME failure, not a setup step.
+
+user        | own    | tenant      | provision (Will, sudo)   | user_exists
+home_dir    | own    | tenant      | provision                | home_private:user:will:--x
+claude_bin  | own    | tenant      | provision (pinned ver.)  | claude_runs
+oauth       | loan   | Will        | Anthropic (Max)          | model_turn
+ledger      | own    | tenant      | turn runner              | ledger_writable
+custody     | own    | tenant      | OS user boundary         | others_unreadable
+memory      | absent | -           | -                        | declared_absent
+sudo        | absent | -           | -                        | no_sudo

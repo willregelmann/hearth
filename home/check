@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# home/check — run AS THE TENANT. Verifies every line of home/inventory by effect.
+# Prints one line per item: GREEN | RED | ABSENT (declared) | SKIP, then exits 0 only if
+# no item is RED or SKIP. Re-execs itself under env -i so nothing leaks in from the caller.
+#
+# usage: home/check [--no-model] [inventory]
+set -u
+if [ -z "${HOME_CHECK_CLEAN:-}" ]; then
+  me=$(id -un); h=$(getent passwd "$me" | cut -d: -f6)
+  exec env -i HOME_CHECK_CLEAN=1 HOME="$h" USER="$me" LOGNAME="$me" \
+    PATH="$h/.local/bin:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 bash "$0" "$@"
+fi
+
+NO_MODEL=0; [ "${1:-}" = "--no-model" ] && { NO_MODEL=1; shift; }
+INV=${1:-$(dirname "$0")/inventory}
+LEDGER="$HOME/.hearth/ledger.jsonl"
+bad=0
+
+mode_of() { stat -c '%a' "$1" 2>/dev/null; }
+owner_of() { stat -c '%U' "$1" 2>/dev/null; }
+
+c_user_exists() { [ "$(getent passwd "$USER" | cut -d: -f3)" = "$(id -u)" ] && echo "uid $(id -u)"; }
+# home_private[:acl,acl...]  owner is the tenant, group/other get nothing, and the named-user/group
+# ACL entries are exactly the declared ones (e.g. user:will:--x so a publisher dir can be read).
+c_home_private() {
+  [ "$(owner_of "$HOME")" = "$USER" ] || { echo "owner $(owner_of "$HOME")"; return 1; }
+  want=$(echo "${1:-}" | tr ',' '\n' | sed '/^$/d' | sort)
+  have=$(getfacl -cp "$HOME" 2>/dev/null | grep -E '^(user|group):[^:]+:' | sort)
+  [ "$have" = "$want" ] || { echo "ACL entries [$(echo $have)], declared [$(echo $want)]"; return 1; }
+  # with an ACL, the group bits shown by stat are the mask; check the real owning-group entry
+  g=$(getfacl -cp "$HOME" 2>/dev/null | grep -E '^group::' | cut -d: -f3)
+  o=$(getfacl -cp "$HOME" 2>/dev/null | grep -E '^other::' | cut -d: -f3)
+  [ "$g" = "---" ] && [ "$o" = "---" ] || { echo "group::$g other::$o, want ---"; return 1; }
+  echo "$USER, group/other ---, ACL [$(echo $have)]"
+}
+c_claude_runs() {
+  p=$(command -v claude) || { echo "claude not on PATH ($PATH)"; return 1; }
+  r=$(readlink -f "$p"); [ -x "$r" ] || { echo "$p -> $r not executable"; return 1; }
+  v=$(claude --version 2>&1) || { echo "claude --version failed: $v"; return 1; }
+  echo "$r ($v)"
+}
+c_model_turn() {
+  [ $NO_MODEL = 1 ] && return 2
+  command -v claude >/dev/null || { echo "no claude"; return 1; }
+  out=$(cd "$HOME" && timeout 120 claude -p --model sonnet --output-format json \
+        "Reply with exactly: HOME-OK" 2>&1) || { echo "turn failed: $(echo "$out" | tail -c 300)"; return 1; }
+  res=$(printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("result","").strip())' 2>/dev/null)
+  [ "$res" = "HOME-OK" ] || { echo "result was: ${res:-<unparsed>}"; return 1; }
+  echo "HOME-OK"
+}
+c_ledger_writable() {
+  [ -f "$LEDGER" ] || { echo "$LEDGER missing"; return 1; }
+  [ "$(owner_of "$LEDGER")" = "$USER" ] && [ "$(mode_of "$LEDGER")" = 644 ] \
+    || { echo "$(owner_of "$LEDGER") $(mode_of "$LEDGER"), want $USER 644"; return 1; }
+  d=$(dirname "$LEDGER")
+  [ "$(owner_of "$d")" = "$USER" ] && [ $(( 8#$(mode_of "$d") & 8#022 )) = 0 ] \
+    || { echo "dir $d $(owner_of "$d") $(mode_of "$d")"; return 1; }
+  echo "$USER 644"
+}
+c_others_unreadable() {
+  leaks=""; tested=0
+  # every other login user's home, from passwd (not a /home glob: a sandbox may stub /home)
+  while IFS=: read -r u _ uid _ _ h _; do
+    [ "$uid" -ge 1000 ] 2>/dev/null && [ "$uid" -lt 60000 ] || continue
+    [ "$u" = "$USER" ] && continue
+    [ -d "$h" ] || continue
+    [ "$(owner_of "$h")" = "$u" ] || continue   # stub, not that user's real home
+    tested=$((tested+1))
+    ls -A "$h" >/dev/null 2>&1 && leaks="$leaks $h"
+  done < <(getent passwd)
+  [ -z "$leaks" ] || { echo "can list:$leaks"; return 1; }
+  # zero real homes seen means a sandbox hid them: that proves nothing, so it is not green
+  [ $tested -gt 0 ] || { echo "no other real home visible to test against (sandboxed run?)"; return 1; }
+  echo "$tested other homes, none listable"
+}
+c_no_sudo() {
+  g=" $(id -nG) "
+  case "$g" in *" sudo "*|*" admin "*|*" wheel "*) echo "in admin group:$g"; return 1;; esac
+  echo "groups:$g"
+}
+c_declared_absent() { return 3; }
+
+while IFS='|' read -r item kind owner issuer chk; do
+  item=$(echo "$item" | xargs); chk=$(echo "$chk" | xargs); kind=$(echo "$kind" | xargs)
+  case "$item" in ''|\#*) continue;; esac
+  arg=""; case "$chk" in *:*) arg=${chk#*:}; chk=${chk%%:*};; esac
+  fn="c_$chk"
+  if ! declare -F "$fn" >/dev/null; then printf 'RED    %-11s unknown check %s\n' "$item" "$chk"; bad=1; continue; fi
+  msg=$($fn "$arg" 2>&1); rc=$?
+  if [ "$kind" = absent ] && [ $rc = 0 ] && [ "$chk" != declared_absent ]; then rc=3; msg="absent as declared: $msg"; fi
+  case $rc in
+    0) printf 'GREEN  %-11s %s\n' "$item" "$msg";;
+    2) printf 'SKIP   %-11s (--no-model)\n' "$item"; bad=1;;
+    3) printf 'ABSENT %-11s declared absent %s\n' "$item" "$msg";;
+    *) printf 'RED    %-11s %s\n' "$item" "$msg"; bad=1;;
+  esac
+done < "$INV"
+exit $bad
