@@ -35,7 +35,20 @@ measurement. Inside the script, two things narrow what a copy can do without rep
   line too. It helps an honest reader spot a copy and doesn't stop a dishonest one.
 
 A missing, unreadable or empty inventory is RED, not a pass over nothing. So is an inventory that
-leaves out user, home_dir, custody, sudo or judge, or gives one of them a different check.
+leaves out user, home_dir, claude_bin, oauth, custody, sudo or judge, or gives one of them a
+different check: without claude_bin and oauth, "comes up working" would go untested. Arguments are
+not pinned (`user_exists` without `:agents` still counts), because pinning them would make the
+required list a second copy of the inventory. A dropped argument in the installed file is an
+operator error that this doesn't catch. The ledger isn't required yet: the turn runner that writes
+it doesn't exist.
+
+A copy run from the tenant's home also fails `judge`, because the copy's own path is writable by
+the tenant. That is a second reason no `$0` self-location check is needed.
+
+`home/controls` runs the guards above against a temporary copy and exits non-zero if any guard
+stopped working. It also deletes the guard from a copy and confirms the empty-inventory control
+then fails, so the controls themselves can go red. It needs no provisioned tenant, and it checks
+only the guard lines, not the ones that depend on the machine it runs on.
 
 Observed so far (as foil, 2026-10-04, `check --no-model`):
 - claude_bin RED: no `claude` on PATH for a non-will user.

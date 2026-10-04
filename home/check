@@ -19,7 +19,7 @@ INV=${1:-$DEFAULT_INV}
 LEDGER="$HOME/.hearth/ledger.jsonl"
 # Items the run must contain, with the check each must use, whatever the list says: an inventory that
 # drops one, or swaps its check for a weaker one (e.g. declared_absent), can't pass.
-REQUIRED="user:user_exists home_dir:home_private custody:others_unreadable sudo:no_sudo judge:judge_not_tenant"
+REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable sudo:no_sudo judge:judge_not_tenant"
 bad=0
 sha() { [ -r "$1" ] && sha256sum "$1" | cut -c1-64 || echo unreadable; }
 # Provenance, for a reader comparing runs. It is printed by the script, so a copy can fake it:

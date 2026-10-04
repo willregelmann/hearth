@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# home/controls — positive and negative controls for check's inventory guards.
+# Runs a temporary copy of check against temporary inventories, with --no-model, and asserts only
+# the guard lines (environment-dependent items like custody or sudo are ignored). Exits non-zero
+# if any guard stopped working. Needs no provisioned tenant; any user can run it.
+set -u
+here=$(dirname "$(readlink -f "$0")")
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+fail=0
+# check with its fixed inventory path pointed at a scratch file
+sed "s#^DEFAULT_INV=/opt/hearth/home/inventory#DEFAULT_INV=$t/inventory#" "$here/check" > "$t/check"
+grep -q "^DEFAULT_INV=$t/inventory" "$t/check" || { echo "FAIL could not retarget DEFAULT_INV"; exit 1; }
+chmod +x "$t/check"
+nreq=$(grep -oE '^REQUIRED="[^"]*"' "$here/check" | tr -cd ' ' | wc -c); nreq=$((nreq + 1))
+
+run() { "$1" --no-model > "$t/out" 2>&1; echo $?; }
+expect() { # name, condition-result (0 = held), detail
+  if [ "$2" = 0 ]; then echo "ok   $1"; else echo "FAIL $1: $3"; fail=1; fi
+}
+
+# 1. populated installed list: no guard fires (so the guards don't RED a correct list)
+cp "$here/inventory" "$t/inventory"; run "$t/check" >/dev/null
+n=$(grep -cE 'required as|missing or unreadable|not the installed inventory' "$t/out")
+expect "populated inventory: no guard line" $([ "$n" = 0 ]; echo $?) "$n guard lines: $(grep -E 'required as|missing' "$t/out")"
+
+# 2. empty list: every required item RED, run fails
+: > "$t/inventory"; rc=$(run "$t/check")
+n=$(grep -c 'required as' "$t/out")
+expect "empty inventory: $nreq required REDs, rc!=0" $([ "$n" = "$nreq" ] && [ "$rc" != 0 ]; echo $?) "n=$n rc=$rc"
+
+# 3. missing list: says so, run fails
+rm -f "$t/inventory"; rc=$(run "$t/check")
+expect "missing inventory: RED, rc!=0" $(grep -q 'missing or unreadable' "$t/out" && [ "$rc" != 0 ]; echo $?) "rc=$rc"
+
+# 4. a required item given a weaker check: RED for that item
+sed 's/no_sudo$/declared_absent/' "$here/inventory" > "$t/inventory"; rc=$(run "$t/check")
+expect "sudo swapped to declared_absent: RED, rc!=0" \
+  $(grep -q '^RED    sudo        required as' "$t/out" && [ "$rc" != 0 ]; echo $?) "rc=$rc"
+
+# 5. some other inventory path: never passes
+cp "$here/inventory" "$t/other"; "$t/check" --no-model "$t/other" > "$t/out" 2>&1; rc=$?
+expect "non-installed inventory: RED, rc!=0" \
+  $(grep -q 'not the installed inventory' "$t/out" && [ "$rc" != 0 ]; echo $?) "rc=$rc"
+
+# 6. the controls can fail: with the required loop deleted, control 2 must no longer hold
+sed '/^for r in \$REQUIRED/,/^done$/d' "$t/check" > "$t/broken"; chmod +x "$t/broken"
+: > "$t/inventory"; run "$t/broken" >/dev/null
+n=$(grep -c 'required as' "$t/out")
+expect "guard deleted: control 2 would catch it" $([ "$n" != "$nreq" ]; echo $?) "still $n required lines"
+
+exit $fail
