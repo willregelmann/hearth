@@ -1,15 +1,17 @@
-#!/usr/bin/env bash
+#!/usr/bin/env -S -i /bin/bash --noprofile --norc
 # home/check — run AS THE TENANT. Verifies every line of home/inventory by effect.
 # Prints one line per item: GREEN | RED | ABSENT (declared) | SKIP, then exits 0 only if
-# no item is RED or SKIP. Re-execs itself under env -i so nothing leaks in from the caller.
+# no item is RED or SKIP.
+# The shebang clears the environment before bash starts, so nothing from the caller reaches the
+# script: no sentinel to forge, and no BASH_ENV, which bash would source before any line here ran.
+# Everything the checks need is rebuilt below from the passwd entry of whoever is running it.
 #
 # usage: home/check [--no-model] [inventory]
 set -u
-if [ -z "${HOME_CHECK_CLEAN:-}" ]; then
-  me=$(id -un); h=$(getent passwd "$me" | cut -d: -f6)
-  exec env -i HOME_CHECK_CLEAN=1 HOME="$h" USER="$me" LOGNAME="$me" \
-    PATH="$h/.local/bin:/usr/local/bin:/usr/bin:/bin" LANG=C.UTF-8 bash "$0" "$@"
-fi
+USER=$(/usr/bin/id -un); LOGNAME=$USER
+HOME=$(/usr/bin/getent passwd "$USER" | /usr/bin/cut -d: -f6)
+PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"; LANG=C.UTF-8
+export USER LOGNAME HOME PATH LANG
 
 NO_MODEL=0; [ "${1:-}" = "--no-model" ] && { NO_MODEL=1; shift; }
 # Fixed, not derived from $0: a copy of this script in the tenant's home still reads the installed

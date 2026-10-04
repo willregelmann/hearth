@@ -48,4 +48,13 @@ sed '/^for r in \$REQUIRED/,/^done$/d' "$t/check" > "$t/broken"; chmod +x "$t/br
 n=$(grep -c 'required as' "$t/out")
 expect "guard deleted: control 2 would catch it" $([ "$n" != "$nreq" ]; echo $?) "still $n required lines"
 
+# 7. nothing from the caller's environment reaches check: a BASH_ENV file (sourced by bash before
+# the first line) and a planted `stat` first on PATH must both stay silent
+mkdir -p "$t/bin"; printf '#!/bin/sh\necho PLANTED-PATH\n' > "$t/bin/stat"; chmod +x "$t/bin/stat"
+printf 'echo PLANTED-BASH_ENV\n' > "$t/env"
+cp "$here/inventory" "$t/inventory"
+BASH_ENV="$t/env" PATH="$t/bin:$PATH" HOME_CHECK_CLEAN=1 "$t/check" --no-model > "$t/out" 2>&1
+expect "caller env (BASH_ENV, PATH) doesn't reach check" $(! grep -q PLANTED "$t/out"; echo $?) \
+  "$(grep PLANTED "$t/out" | sort -u | tr '\n' ' ')"
+
 exit $fail

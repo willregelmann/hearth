@@ -5,7 +5,7 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
 
 - `inventory`: the declared list. kind is own, loan or absent. Anything not listed that the
   tenant needs is a HOME failure.
-- `check`: run AS THE TENANT. It re-execs under `env -i` and verifies each item by effect. Each item
+- `check`: run AS THE TENANT. Its shebang starts it with an empty environment, and it verifies each item by effect. Each item
   reports GREEN, RED, ABSENT (declared) or SKIP. It exits 0 only if nothing is RED or SKIP.
 - `provision`: run by Will with sudo (`--dry-run` changes nothing). It creates the tenant from the
   inventory, apart from the OAuth login, which is Will's credential, so it prints the command. It
@@ -21,7 +21,9 @@ Acceptance: on the fresh user, `check` is RED before provisioning and GREEN afte
 controls: each inventory item, removed or broken alone, turns only its own line RED.
 
 Run `check` from a login shell as the tenant (`sudo -iu buster /opt/hearth/home/check`), not from inside
-a systemd unit with NoNewPrivileges. Under that flag sudo refuses before reading any rules, so the
+a systemd unit with NoNewPrivileges. Run it by path, not as `bash check`: its shebang
+(`env -S -i`, coreutils 8.30 or later) is what strips the caller's environment, and `bash check`
+skips the shebang. Under NoNewPrivileges sudo refuses before reading any rules, so the
 sudo line can only say "cannot determine". Custody needs a view of other users' real homes, which
 a ProtectHome sandbox hides.
 
