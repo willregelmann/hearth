@@ -7,7 +7,9 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   tenant needs is a HOME failure.
 - `check`: run AS THE TENANT. Its shebang starts it with an empty environment, and it verifies each item by effect. Each item
   reports GREEN, RED, ABSENT (declared) or SKIP. It exits 0 only if nothing is RED or SKIP.
-- `provision`: run by Will with sudo (`--dry-run` changes nothing). It creates the tenant from the
+- `provision`: run by Will with sudo (`--dry-run` changes nothing). Before any change it stops
+  unless the host has setfacl and getfacl (the `acl` package, which Raspberry Pi OS doesn't ship)
+  and an `env` that takes `-S` (coreutils 8.30 or later). It creates the tenant from the
   inventory, apart from the OAuth login, which is Will's credential, so it prints the command. It
   refuses any existing user it didn't create (root-owned marker `~/.hearth-provisioned`), because on
   an existing agent it would strip ACLs. A dry run against `foil` stops there. `check` and

@@ -33,6 +33,13 @@ run() { echo "+ $*"; [ $DRY = 1 ] || "$@"; }
 as_t() { run sudo -u "$T" -H "$@"; }
 die() { echo "STOP: $*" >&2; exit 1; }
 
+# 0. host prerequisites, before any change: provision needs setfacl, and check needs getfacl and an
+#    env that takes -S. A missing one is a stop here, not a failure halfway through.
+for c in setfacl getfacl; do
+  PATH=/usr/bin:/bin command -v "$c" >/dev/null || die "$c not found in /usr/bin:/bin (install the acl package)"
+done
+/usr/bin/env -S -i /bin/true 2>/dev/null || die "/usr/bin/env has no -S (check's shebang needs coreutils 8.30 or later)"
+
 # 1. user: own primary group, plus agents. Only a user this script created may be touched again:
 #    an existing user without the marker is someone's home, and provision would strip its ACLs.
 MARK=.hearth-provisioned          # root-owned, in the home's top level: written by the very next command

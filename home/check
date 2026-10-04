@@ -58,6 +58,7 @@ c_user_exists() {
 # ACL entries are exactly the declared ones (e.g. user:will:--x so a publisher dir can be read).
 c_home_private() {
   [ "$(owner_of "$HOME")" = "$USER" ] || { echo "owner $(owner_of "$HOME")"; return 1; }
+  command -v getfacl >/dev/null || { echo "getfacl not found (acl package): can't read the ACL"; return 1; }
   want=$(echo "${1:-}" | tr ',' '\n' | sed '/^$/d' | sort)
   have=$(getfacl -cp "$HOME" 2>/dev/null | grep -E '^(user|group):[^:]+:' | sort)
   [ "$have" = "$want" ] || { echo "ACL entries [$(echo $have)], declared [$(echo $want)]"; return 1; }
