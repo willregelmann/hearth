@@ -88,7 +88,17 @@ c_others_unreadable() {
 c_no_sudo() {
   g=" $(id -nG) "
   case "$g" in *" sudo "*|*" admin "*|*" wheel "*) echo "in admin group:$g"; return 1;; esac
-  echo "groups:$g"
+  # a sudoers rule needs no group, so ask sudo itself. Only its explicit refusal is green:
+  # under NoNewPrivileges (e.g. a hardened systemd unit) sudo -n -l also exits 1 without
+  # consulting sudoers at all, which proves nothing.
+  command -v sudo >/dev/null || { echo "groups:$g, no sudo binary"; return 0; }
+  out=$(LC_ALL=C sudo -n -l 2>&1); rc=$?
+  [ $rc = 0 ] && { echo "sudo -n -l lists rules: $(echo "$out" | tail -n 3 | tr '\n' ' ')"; return 1; }
+  case "$out" in
+    *"may not run sudo"*) echo "groups:$g, sudo refuses: $(echo "$out" | head -n 1)";;
+    *"password is required"*) echo "sudo has rules (asks for a password)"; return 1;;
+    *) echo "cannot determine sudo rights (rc $rc): $(echo "$out" | head -n 1)"; return 1;;
+  esac
 }
 c_declared_absent() { return 3; }
 
