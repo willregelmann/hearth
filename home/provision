@@ -33,17 +33,11 @@ run() { echo "+ $*"; [ $DRY = 1 ] || "$@"; }
 as_t() { run sudo -u "$T" -H "$@"; }
 die() { echo "STOP: $*" >&2; exit 1; }
 
-# 0. host prerequisites, before any change: provision needs setfacl, and check needs getfacl and an
-#    env that takes -S. A missing one is a stop here, not a failure halfway through.
-for c in setfacl getfacl; do
-  PATH=/usr/bin:/bin command -v "$c" >/dev/null || die "$c not found in /usr/bin:/bin (install the acl package)"
-done
-/usr/bin/env -S -i /bin/true 2>/dev/null || die "/usr/bin/env has no -S (check's shebang needs coreutils 8.30 or later)"
-
-# 1. user: own primary group, plus agents. Only a user this script created may be touched again:
-#    an existing user it didn't create is someone's home, and provision would strip its ACLs.
-#    The record lives in a root-owned registry outside every home, holding the uid, so no tenant
-#    or other agent can forge or delete it. A marker inside the home could be made by its owner.
+# Only a user this script created may be touched again: an existing user it didn't create is
+# someone's home, and provision would strip its ACLs. The record lives in a root-owned registry
+# outside every home, holding the uid, so no tenant or other agent can forge or delete it (a marker
+# inside the home could be made by its owner). This refusal reads only, so it comes first: it
+# holds even on a host that would fail the prerequisites below.
 REG=/var/lib/hearth/tenants      # REG/<tenant> holds the uid, written by the command after useradd
 registered() {                   # root-owned, not writable by anyone else, and naming this uid
   local f=$REG/$1
@@ -53,6 +47,17 @@ registered() {                   # root-owned, not writable by anyone else, and 
 }
 if getent passwd "$T" >/dev/null; then
   registered "$T" || die "user $T exists and isn't in $REG with its uid (provision didn't create it); refusing to touch it"
+fi
+
+# 0. host prerequisites, before any change: provision needs setfacl, and check needs getfacl and an
+#    env that takes -S. A missing one is a stop here, not a failure halfway through.
+for c in setfacl getfacl; do
+  PATH=/usr/bin:/bin command -v "$c" >/dev/null || die "$c not found in /usr/bin:/bin (install the acl package)"
+done
+/usr/bin/env -S -i /bin/true 2>/dev/null || die "/usr/bin/env has no -S (check's shebang needs coreutils 8.30 or later)"
+
+# 1. user: own primary group, plus agents.
+if getent passwd "$T" >/dev/null; then
   [ "$(id -gn "$T")" = "$T" ] || die "user $T exists with primary group $(id -gn "$T")"
   echo "= user $T exists (registered)"
 else
