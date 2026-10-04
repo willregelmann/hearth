@@ -10,7 +10,10 @@
 set -u
 USER=$(/usr/bin/id -un); LOGNAME=$USER
 HOME=$(/usr/bin/getent passwd "$USER" | /usr/bin/cut -d: -f6)
-PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"; LANG=C.UTF-8
+PATH="/usr/bin:/bin"; LANG=C.UTF-8
+# Nothing the tenant can write is on PATH: the judged party must not choose its judge's tools.
+# The one tenant binary, claude, is named by its full path (provision installs it there).
+CLAUDE="$HOME/.local/bin/claude"
 export USER LOGNAME HOME PATH LANG
 
 NO_MODEL=0; [ "${1:-}" = "--no-model" ] && { NO_MODEL=1; shift; }
@@ -66,18 +69,18 @@ c_home_private() {
 }
 c_claude_runs() {
   # arg = pinned version. The binary must resolve inside the tenant's own home (per-tenant install).
-  p=$(command -v claude) || { echo "claude not on PATH ($PATH)"; return 1; }
+  p=$CLAUDE; [ -e "$p" ] || { echo "no claude at $p"; return 1; }
   r=$(readlink -f "$p"); [ -x "$r" ] || { echo "$p -> $r not executable"; return 1; }
   case "$r" in "$HOME"/*) ;; *) echo "$r is outside $HOME (not the tenant's own install)"; return 1;; esac
   [ "$(owner_of "$r")" = "$USER" ] || { echo "$r owned by $(owner_of "$r")"; return 1; }
-  v=$(claude --version 2>&1) || { echo "claude --version failed: $v"; return 1; }
+  v=$("$CLAUDE" --version 2>&1) || { echo "claude --version failed: $v"; return 1; }
   [ -z "${1:-}" ] || [ "${v%% *}" = "$1" ] || { echo "version '$v', pinned $1"; return 1; }
   echo "$r ($v)"
 }
 c_model_turn() {
   [ $NO_MODEL = 1 ] && return 2
-  command -v claude >/dev/null || { echo "no claude"; return 1; }
-  out=$(cd "$HOME" && timeout 120 claude -p --model sonnet --output-format json \
+  [ -x "$CLAUDE" ] || { echo "no claude at $CLAUDE"; return 1; }
+  out=$(cd "$HOME" && timeout 120 "$CLAUDE" -p --model sonnet --output-format json \
         "Reply with exactly: HOME-OK" 2>&1) || { echo "turn failed: $(echo "$out" | tail -c 300)"; return 1; }
   res=$(printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("result","").strip())' 2>/dev/null)
   [ "$res" = "HOME-OK" ] || { echo "result was: ${res:-<unparsed>}"; return 1; }

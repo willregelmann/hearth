@@ -23,7 +23,9 @@ controls: each inventory item, removed or broken alone, turns only its own line 
 Run `check` from a login shell as the tenant (`sudo -iu buster /opt/hearth/home/check`), not from inside
 a systemd unit with NoNewPrivileges. Run it by path, not as `bash check`: its shebang
 (`env -S -i`, coreutils 8.30 or later) is what strips the caller's environment, and `bash check`
-skips the shebang. Under NoNewPrivileges sudo refuses before reading any rules, so the
+skips the shebang. check's PATH is only /usr/bin:/bin, so nothing the tenant can write chooses the
+judge's tools. claude is named by its full path, `~/.local/bin/claude`, where provision installs it.
+Under NoNewPrivileges sudo refuses before reading any rules, so the
 sudo line can only say "cannot determine". Custody needs a view of other users' real homes, which
 a ProtectHome sandbox hides.
 

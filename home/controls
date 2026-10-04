@@ -57,4 +57,18 @@ BASH_ENV="$t/env" PATH="$t/bin:$PATH" HOME_CHECK_CLEAN=1 "$t/check" --no-model >
 expect "caller env (BASH_ENV, PATH) doesn't reach check" $(! grep -q PLANTED "$t/out"; echo $?) \
   "$(grep PLANTED "$t/out" | sort -u | tr '\n' ' ')"
 
+# 8. the tenant's own ~/.local/bin can't shadow the judge's tools. This plants a `stat` in the
+# real ~/.local/bin of whoever runs controls, so it is skipped if one is already there, and the
+# plant is removed on exit.
+plant="$HOME/.local/bin/stat"
+if [ -e "$plant" ]; then
+  echo "skip tenant-shadowed tool: $plant already exists"
+else
+  mkdir -p "$HOME/.local/bin"; printf '#!/bin/sh\necho PLANTED-HOME\n' > "$plant"; chmod +x "$plant"
+  trap 'rm -f "$plant"; rm -rf "$t"' EXIT
+  "$t/check" --no-model > "$t/out" 2>&1; rm -f "$plant"
+  expect "tenant ~/.local/bin doesn't shadow check's tools" $(! grep -q PLANTED "$t/out"; echo $?) \
+    "$(grep PLANTED "$t/out" | sort -u | tr '\n' ' ')"
+fi
+
 exit $fail
