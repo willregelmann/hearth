@@ -151,5 +151,24 @@ expect "planted ledger link: provision STOPs, target stays 600" \
 bad=$(grep -nE '^[[:space:]]*(run|install|chmod|chown|cmp|grep|cp|mv|ln|touch|setfacl)[[:space:]][^#]*("\$H/|\$(dst|vdir|link|settings|ledger)\b)' "$here/provision" \
       | grep -vE 'as_t|tq ' || true)
 expect "no root command on a path under the tenant's home" $([ -z "$bad" ]; echo $?) "$bad"
+# ...and no root-side test that follows links (-e -f -d -r -w -x -s) on such a path, in any of the
+# forms [ ], [ ! ], [[ ]] or a bare `test`. [ -L ] is lstat, so it stays allowed; a following test
+# must go through `tq test`. The pattern is checked against planted variants below.
+# Limit (Ash's note on #34): this greps the source, so it guards these forms, not the class. It
+# misses stat without -L, a path built in a subshell, and any new variable naming a path under $H.
+# The rule it enforces is the header's (root does nothing inside the tenant's home); review is
+# still what holds it.
+fpat='(\[\[?|(^|[^q] )test) +(! +)?-[efdrwxs] +"?\$(H/|(dst|vdir|link|settings|ledger)\b)'
+bad=$(grep -nE "$fpat" "$here/provision" || true)
+expect "no root-side following test on a path under the tenant's home" $([ -z "$bad" ]; echo $?) "$bad"
+# The pattern must catch every root-side form and spare the allowed ones (red arm of the line above).
+miss=""
+for l in '[ -e "$H/.hearth" ]' '[ ! -e "$H/x" ]' '[[ -e "$H/x" ]]' 'test -e "$H/x"' 'if test -f "$ledger"; then' '[ -d $vdir ]'; do
+  printf '%s\n' "$l" | grep -qE "$fpat" || miss="$miss missed:[$l]"
+done
+for l in 'tq test -e "$link"' '[ -L "$link" ]' '[ -e "$linkage" ]'; do
+  printf '%s\n' "$l" | grep -qE "$fpat" && miss="$miss flagged:[$l]"
+done
+expect "following-test pattern catches [ ], [ ! ], [[ ]], bare test; spares tq and -L" $([ -z "$miss" ]; echo $?) "$miss"
 
 exit $fail
