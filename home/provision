@@ -110,7 +110,7 @@ else
     sudo -u "$T" -H sh -c 'umask 022; cat > "$1.part" && chmod 755 "$1.part" && mv "$1.part" "$1"' sh "$dst" < "$CLAUDE_SRC"
 fi
 if [ -L "$link" ] && [ "$(readlink "$link")" = "$dst" ]; then echo "= $link ok"
-elif [ -e "$link" ] || [ -L "$link" ]; then die "$link exists and isn't the pinned link"
+elif tq test -e "$link" || [ -L "$link" ]; then die "$link exists and isn't the pinned link"
 else as_t ln -s "$dst" "$link"; fi
 # pin: stop the background updater (believed: DISABLE_AUTOUPDATER in settings env; check proves the version)
 settings=$H/.claude/settings.json

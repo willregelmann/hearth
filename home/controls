@@ -151,5 +151,9 @@ expect "planted ledger link: provision STOPs, target stays 600" \
 bad=$(grep -nE '^[[:space:]]*(run|install|chmod|chown|cmp|grep|cp|mv|ln|touch|setfacl)[[:space:]][^#]*("\$H/|\$(dst|vdir|link|settings|ledger)\b)' "$here/provision" \
       | grep -vE 'as_t|tq ' || true)
 expect "no root command on a path under the tenant's home" $([ -z "$bad" ]; echo $?) "$bad"
+# ...and no root-side [ test that follows links (-e -f -d -r -w -x -s) on such a path. [ -L ] is
+# lstat, so it stays allowed; a following test must go through `tq test`.
+bad=$(grep -nE '\[ +-[efdrwxs] +"?\$(H/|dst\b|vdir\b|link\b|settings\b|ledger\b)' "$here/provision" || true)
+expect "no root-side following test on a path under the tenant's home" $([ -z "$bad" ]; echo $?) "$bad"
 
 exit $fail
