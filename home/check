@@ -19,7 +19,15 @@ bad=0
 mode_of() { stat -c '%a' "$1" 2>/dev/null; }
 owner_of() { stat -c '%U' "$1" 2>/dev/null; }
 
-c_user_exists() { [ "$(getent passwd "$USER" | cut -d: -f3)" = "$(id -u)" ] && echo "uid $(id -u)"; }
+c_user_exists() {
+  # names, not a hard-coded uid: useradd assigns it. arg = required extra groups, comma-separated
+  [ "$(getent passwd "$USER" | cut -d: -f3)" = "$(id -u)" ] || { echo "passwd/uid mismatch"; return 1; }
+  [ "$(id -gn)" = "$USER" ] || { echo "primary group $(id -gn), want $USER"; return 1; }
+  for g in $(echo "${1:-}" | tr ',' ' '); do
+    case " $(id -nG) " in *" $g "*) ;; *) echo "not in group $g (groups: $(id -nG))"; return 1;; esac
+  done
+  echo "$USER:$(id -gn) groups: $(id -nG)"
+}
 # home_private[:acl,acl...]  owner is the tenant, group/other get nothing, and the named-user/group
 # ACL entries are exactly the declared ones (e.g. user:will:--x so a publisher dir can be read).
 c_home_private() {
@@ -34,9 +42,13 @@ c_home_private() {
   echo "$USER, group/other ---, ACL [$(echo $have)]"
 }
 c_claude_runs() {
+  # arg = pinned version. The binary must resolve inside the tenant's own home (per-tenant install).
   p=$(command -v claude) || { echo "claude not on PATH ($PATH)"; return 1; }
   r=$(readlink -f "$p"); [ -x "$r" ] || { echo "$p -> $r not executable"; return 1; }
+  case "$r" in "$HOME"/*) ;; *) echo "$r is outside $HOME (not the tenant's own install)"; return 1;; esac
+  [ "$(owner_of "$r")" = "$USER" ] || { echo "$r owned by $(owner_of "$r")"; return 1; }
   v=$(claude --version 2>&1) || { echo "claude --version failed: $v"; return 1; }
+  [ -z "${1:-}" ] || [ "${v%% *}" = "$1" ] || { echo "version '$v', pinned $1"; return 1; }
   echo "$r ($v)"
 }
 c_model_turn() {
