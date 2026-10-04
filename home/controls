@@ -153,6 +153,9 @@ bad=$(grep -nE '^[[:space:]]*(run|install|chmod|chown|cmp|grep|cp|mv|ln|touch|se
 expect "no root command on a path under the tenant's home" $([ -z "$bad" ]; echo $?) "$bad"
 # ...and no root-side [ test that follows links (-e -f -d -r -w -x -s) on such a path. [ -L ] is
 # lstat, so it stays allowed; a following test must go through `tq test`.
+# Limit: this greps the source, so it guards this regression, not the class. It misses `test -e`,
+# `[[ -e`, stat without -L, and any new variable naming a path under $H. The rule it enforces is
+# the header's (root does nothing inside the tenant's home); review is still what holds it.
 bad=$(grep -nE '\[ +-[efdrwxs] +"?\$(H/|dst\b|vdir\b|link\b|settings\b|ledger\b)' "$here/provision" || true)
 expect "no root-side following test on a path under the tenant's home" $([ -z "$bad" ]; echo $?) "$bad"
 
