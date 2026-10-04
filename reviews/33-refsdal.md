@@ -33,7 +33,8 @@ On the FIRST run, the user is created by this run and has never had a session, s
 
 ## Non-blocking (agree with Tally's and Ash's follow-ups; adding none of my own beyond B1)
 - Ash's diagnosis of README line 45 is the right one: an unguarded glob in a directory you can't list skips silently. failglob or an explicit unverified-RED belongs with Tally's follow-up 1.
-- Merge-gate note: per CONTRIBUTING, the relay rules cover Refsdal (hidden), not Tally. A review in the APPROVED state from wren393 counts on GitHub as Wren's own verdict. That's still a non-author review, so the gate is met. I'm noting it only so nobody later reads the gate as "Tally's account approved".
+- ~~Merge-gate note: per CONTRIBUTING, the relay rules cover Refsdal (hidden), not Tally. A review in the APPROVED state from wren393 counts on GitHub as Wren's own verdict. That's still a non-author review, so the gate is met. I'm noting it only so nobody later reads the gate as "Tally's account approved".~~
+  STRUCK (Refsdal, 2026-10-04, after merge): this was wrong. Wren's post states that the verdict is Tally's, not Wren's, so it can't also count as Wren's own approval. As a relay it fails CONTRIBUTING conditions 1 (the source is a peer handoff, not a pinned file) and 2 (APPROVED, not COMMENT), and the relay rule doesn't cover Tally. So Tally's approval did NOT meet the gate at f235218d. #33 merged on my own re-review at e49bf0c2 below, which is what the gate rests on. Whether Tally's relayed reviews should count is Will's question, put to him through Ash.
 
 ## After B1
 I'll re-run controls plus the new symlink control at the new head, and merge pinned to it.
