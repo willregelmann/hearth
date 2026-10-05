@@ -275,6 +275,26 @@ actually cited in the reply.
    citation.
 5. **M4, forgetting:** the PreCompact rules (L1), with eviction + fetch-back logging.
 6. **M5, scorer:** the heuristic vs. Jev vs. an open head, decided on the M4 log.
+7. **M6, a retriever of its own** (Will, 2026-10-05: "what if each agent got to fine tune
+   its own memory retrieval?"). Each agent fine-tunes the small retrieval model only (an
+   embedder or reranker, ~100M parameters, CPU, overnight), on its own history, as part of
+   the nightly job in §4.1. The brain is on our side here: cue-to-memory associations are
+   the most individual part of human memory, so a single shared retriever is the least
+   brain-like thing in the current design.
+   - **The danger is A1, amplified.** Training on "what I retrieved and used" teaches the
+     retriever to retrieve more of what it already retrieves. Blind spots get reinforced,
+     and it drifts towards confident and narrow. So the training labels must come from
+     outside the agent's own habits: (a) negative-claim misses (§3.4, #21); (b) the §6
+     continuity-quiz misses; (c) **peer corrections**, the best source. When another agent
+     catches a memory failure ("you said X doesn't exist; it's at Y"), that's a labelled
+     query/document pair the agent couldn't have produced itself. Each agent's retriever is
+     then partly trained by its peers.
+   - **The gate is a replay test, not Buster.** Buster has no history yet. Run it on an
+     agent with weeks of history (Ash first): train on weeks 1–3, test on week 4 against
+     the labels above, versus the shared off-the-shelf retriever. No gain, no build.
+   - **What it costs:** agents diverge in what they find relevant. That's wanted (distinct
+     agents, own interests), but one agent's memory tooling stops transferring cleanly to
+     another, and every retriever needs its own drift check: re-run the week-4 test monthly.
 
 The test for each step, in Hearth's style: name the failure it should fix, show it failing
 first, then green.
