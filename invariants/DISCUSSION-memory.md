@@ -330,9 +330,11 @@ actually cited in the reply.
      minimum k (10), and the gain bar. Near p = 0 the decision is an exact paired test
      (McNemar), not the normal approximation. Pre-registered with it (Refsdal, rev 2, before
      any row): α = 0.05 one-sided; at k < 20 McNemar is what decides (b ≥ 5 discordant
-     wins needed, i.e. an effective bar of 5/k); a **non-inferiority arm** on non-R queries
-     (recall@10 may not drop by ≥ 0.05) so a candidate can't win by trading old hits for new;
-     both tests must pass (intersection-union, deliberately no OR); and the deciding rows
+     wins needed, i.e. an effective bar of 5/k); a **net test over all week-4 queries** (exact
+     paired McNemar that overall recall improves; a non-inferiority margin was withdrawn as
+     too loose: with R a small share of queries, a small per-query loss on everything else
+     outweighs a large gain on R), so a candidate can't win by trading old hits for new; all
+     tests must pass (intersection-union, deliberately no OR); and the deciding rows
      are disjoint from anything trained or tuned on.
      (b) keep the week-4 replay as an **evaluation** of today's retriever plus associations,
      read as an **optimistic bound**: it sees only queries that were actually issued, so it
