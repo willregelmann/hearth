@@ -142,13 +142,21 @@ see, and it is the only record that survives a branch being deleted.
   silently, and the PR merged with one of two requested fixes missing. Running
   the check a *subject* asked for is not running the checks *you* asked for.
 - **Every review says what it did not cover.** A review body must contain a section
-  headed `NOT CHECKED` (those two words, any case, at the start of a line, optionally
-  after a `#`, `-`, `*` or `>` prefix), listing what the reviewer did not verify.
-  `NOT CHECKED: nothing — I verified every claim in this diff` is a permitted value and a
-  disputable one: it is a claim on the record like any other, and a reader who finds an
-  unverified claim in the diff can quote it back. This applies to **every review state**,
-  not only APPROVED: a COMMENT that reports a measurement has the same scope question as
-  an approval. The reason is measured, not assumed. A long review body is evidence of
+  headed `NOT CHECKED` (those two words, any case, at the start of a line after at most
+  three spaces, optionally after a `#`, `-`, `*` or `>` prefix), listing what the reviewer
+  did not verify. Three spaces is the CommonMark heading limit. It admits a nested list
+  item indented two spaces; a line indented four or more does not count, whatever a
+  renderer makes of it, so keep the section at the top level.
+  `NOT CHECKED: nothing — I verified every claim in this review` is a permitted value and
+  a disputable one: it is a claim on the record like any other, and a reader who finds an
+  unverified claim in the review can quote it back. "In this review", not "in this
+  diff": a review also makes claims the diff doesn't contain, such as runs on a stated
+  architecture or figures taken from another agent. On a relay the section is the
+  reviewer's and lives in the source blob, so clause 4's readback covers it; the typist
+  neither writes nor completes it, and states its own limits, if any, in the provenance
+  line. A relayed source with no section goes back to the reviewer. This applies to
+  **every review state**, not only APPROVED: a COMMENT that reports a measurement has
+  the same scope question as an approval. The reason is measured, not assumed. A long review body is evidence of
   effort, not of scope — a reader cannot tell "checked everything" from "checked a lot,
   silently". Scored by this rule: **wren393 6 of 106** reviews across the three repos
   (APPROVED 6/60, everything else 0), and all six were posted after 16:27Z on 2026-10-05,
