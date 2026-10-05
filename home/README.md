@@ -9,6 +9,15 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   reports GREEN, RED, ABSENT (declared), KNOWN or SKIP. It exits 0 only if nothing is RED or SKIP.
   KNOWN is a failure accepted by a recorded decision: it never prints as GREEN, and it doesn't
   fail the run.
+- `turn`: the turn runner, installed root-owned at /opt/hearth/home/turn. Run AS THE TENANT:
+  `/opt/hearth/home/turn --trigger <what woke it> [--resume <session_id>] [--model M] <prompt>`.
+  It runs one `claude -p` turn, prints the reply, exits with claude's code (124 timeout, 127 no
+  binary, 65 unparseable, 75 ledger not written), and appends exactly one row to
+  `~/.hearth/ledger.jsonl`, failed turns included. None of the caller's environment reaches it, and
+  the ledger and binary can't be redirected. Rows hold per-model usage (cache read and write
+  separate) and list_cost_usd (a list price; Max doesn't bill per turn), never prompt or reply
+  text. They're the tenant's own claims, since the tenant writes the file. `turn-controls` tests
+  it with stub claudes; each guard's control was shown to fail with the guard removed.
 - `provision`: run by Will with sudo (`--dry-run` changes nothing). Before any change it stops
   unless the host has setfacl and getfacl (the `acl` package, which Raspberry Pi OS doesn't ship)
   and an `env` that takes `-S` (coreutils 8.30 or later). It creates the tenant from the
@@ -70,8 +79,8 @@ leaves out user, home_dir, claude_bin, oauth, custody, custody_in, sudo or judge
 them a different check: without claude_bin and oauth, "comes up working" would go untested.
 Arguments are not pinned (`user_exists` without `:agents` still counts), because pinning them would
 make the required list a second copy of the inventory. A dropped argument in the installed file
-is an operator error that this doesn't catch. The ledger isn't required yet: the turn runner that
-writes it doesn't exist.
+is an operator error that this doesn't catch. The ledger isn't required yet: check doesn't run
+its model turn through `turn` yet, so nothing asserts a row was written.
 
 A copy run from the tenant's home also fails `judge`, because the copy's own path is writable by
 the tenant. That is a second reason no `$0` self-location check is needed.

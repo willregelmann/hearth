@@ -1,7 +1,7 @@
-#!/usr/bin/python3
+#!/usr/bin/env -S -i /usr/bin/python3 -I
 """home/turn: the turn runner. One model turn as the tenant, one ledger row per turn.
 
-    turn --trigger <name> [--model M] [--timeout S] <prompt>
+    turn --trigger <name> [--resume SESSION_ID] [--model M] [--timeout S] <prompt>
 
 Runs `claude -p --output-format json <prompt>` with stdin from /dev/null, prints the result text
 on stdout, and appends exactly one row to ~/.hearth/ledger.jsonl, including when the turn fails.
@@ -22,11 +22,30 @@ Concurrency: the turn itself runs unlocked. The ledger is flock'd only around "r
 append mine", and each row is one write(), so concurrent turns can't interleave or both read the
 same predecessor.
 
+Environment: none of the caller's. The shebang starts python with an empty environment and -I
+(no PYTHONPATH, no user site), and claude gets a fixed environment built from the passwd entry.
+So a caller's ANTHROPIC_API_KEY can't move the turn off the tenant's OAuth login while a
+normal-looking row is written, and CLAUDE_CONFIG_DIR can't move the session store.
+
+Fixed targets: the ledger and the claude binary come from the tenant's passwd entry, and no flag
+or variable changes them. The controls test a copy with those two lines rewritten. The guarantee
+is "every turn that went through the installed runner has a row". A tenant running claude
+directly bypasses the runner, as it always could; that's a custody question, not a ledger one.
+
+--resume passes a session id through to claude, so turns can share a session. Cache figures
+across a gap only mean something within one session_id: a fresh session always writes the cache.
+
 This file is installed root-owned in /opt/hearth/home, next to check, so the tenant can't edit
 what records it.
 """
 import argparse, fcntl, hashlib, json, os, pwd, signal, subprocess, sys, time
 from datetime import datetime, timezone
+
+_pw = pwd.getpwuid(os.getuid())
+LEDGER = os.path.join(_pw.pw_dir, ".hearth", "ledger.jsonl")
+CLAUDE = os.path.join(_pw.pw_dir, ".local", "bin", "claude")
+ENV = {"HOME": _pw.pw_dir, "USER": _pw.pw_name, "LOGNAME": _pw.pw_name,
+       "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 
 SCHEMA = 1
 EX_TIMEOUT, EX_DATAERR, EX_TEMPFAIL = 124, 65, 75
@@ -92,21 +111,23 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="turn")
     ap.add_argument("--trigger", required=True, help="why this turn ran: check, cron, will, ...")
     ap.add_argument("--model")
+    ap.add_argument("--resume", metavar="SESSION_ID")
     ap.add_argument("--timeout", type=float, default=300)
-    ap.add_argument("--ledger", default=os.path.join(me.pw_dir, ".hearth", "ledger.jsonl"))
-    ap.add_argument("--claude", default=os.path.join(me.pw_dir, ".local", "bin", "claude"))
     ap.add_argument("prompt")
     a = ap.parse_args(argv)
+    a.ledger, a.claude = LEDGER, CLAUDE
 
     cmd = [a.claude, "-p", "--output-format", "json"]
     if a.model:
         cmd += ["--model", a.model]
+    if a.resume:
+        cmd += ["--resume", a.resume]
     cmd.append(a.prompt)
 
     row = {
-        "v": SCHEMA, "user": me.pw_name, "trigger": a.trigger, "model_requested": a.model,
+        "v": SCHEMA, "user": me.pw_name, "trigger": a.trigger, "model_requested": a.model, "resume": a.resume,
         "prompt_sha256": hashlib.sha256(a.prompt.encode()).hexdigest(),
-        "rc": None, "error": None, "session_id": None, "num_turns": None, "is_error": None,
+        "rc": None, "error": None, "session_id": None, "api_duration_ms": None, "num_turns": None, "is_error": None,
         "stop_reason": None, "result_chars": None, "usage": None, "list_cost_usd": None,
     }
     t0 = time.time()
@@ -116,7 +137,8 @@ def main(argv=None):
         # Own process group, so a timeout kills claude AND everything it spawned (node, MCP
         # servers, tools). Killing only the direct child leaves those running as orphans.
         proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, cwd=me.pw_dir, start_new_session=True)
+                                stderr=subprocess.PIPE, cwd=me.pw_dir, env=ENV,
+                                start_new_session=True)
         try:
             out, err = proc.communicate(timeout=a.timeout)
         except subprocess.TimeoutExpired:
@@ -139,6 +161,7 @@ def main(argv=None):
         if d is not None:
             result = d.get("result")
             row.update(session_id=d.get("session_id"), num_turns=d.get("num_turns"),
+                       api_duration_ms=d.get("duration_api_ms"),
                        is_error=d.get("is_error"), stop_reason=d.get("stop_reason"),
                        result_chars=len(result) if isinstance(result, str) else None,
                        usage=per_model(d.get("modelUsage")) or None,
