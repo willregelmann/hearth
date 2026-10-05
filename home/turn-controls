@@ -1,0 +1,159 @@
+#!/usr/bin/env bash
+# home/turn-controls: negative controls for home/turn. Stub claudes, a scratch ledger, no model call.
+#   bash home/turn-controls [path/to/turn]
+# turn takes its ledger and claude from the passwd entry, with no flag to move them, so each
+# control runs a COPY with those two assignments rewritten, executed directly so the real shebang
+# (empty env, python -I) is what's tested. Each control names the property and the failure it must
+# catch. rc 0 only if every one passes.
+set -u
+TURN=$(readlink -f "${1:-$(dirname "$0")/turn}")
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+pass=0; fail=0
+ok()  { echo "ok   $1"; pass=$((pass+1)); }
+bad() { echo "FAIL $1: $2"; fail=$((fail+1)); }
+L=$T/ledger.jsonl
+fresh() { : > "$L"; chmod 644 "$L"; }
+rows()  { grep -c . "$L"; }
+field() { python3 -c "import json,sys; r=[json.loads(l) for l in open('$L') if l.strip()]; print(json.dumps(eval(sys.argv[1])))" "$1"; }
+stub() {  # stub NAME BODY: a fake claude
+  printf '#!/bin/bash\n%s\n' "$2" > "$T/$1"; chmod 755 "$T/$1"; echo "$T/$1"
+}
+at() {    # at CLAUDE: a copy of turn whose ledger is $L and whose claude is CLAUDE
+  local c=$T/turn.$(basename "$1")
+  sed -e "s|^LEDGER = .*|LEDGER = '$L'|" -e "s|^CLAUDE = .*|CLAUDE = '$1'|" "$TURN" > "$c"; chmod 755 "$c"
+  [ "$(grep -c "^LEDGER = '$L'\$\|^CLAUDE = '$1'\$" "$c")" = 2 ] || { echo "turn-controls: cannot retarget $TURN" >&2; exit 2; }
+  echo "$c"
+}
+run() { local cl=$1; shift; "$(at "$cl")" "$@"; }
+J='{"type":"result","subtype":"success","is_error":false,"num_turns":1,"stop_reason":"end_turn","session_id":"s1","duration_api_ms":42,"result":"TURN-OK","total_cost_usd":0.25,"modelUsage":{"m-big":{"inputTokens":3,"outputTokens":5,"cacheReadInputTokens":100,"cacheCreationInputTokens":7,"thinkingTokens":0,"webSearchRequests":0,"costUSD":0.2,"costBasis":"list"},"m-small":{"inputTokens":1,"outputTokens":2,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"thinkingTokens":0,"webSearchRequests":0,"costUSD":0.05,"costBasis":"list"}}}'
+GOOD=$(stub good "echo '$J'")
+
+# 1. a good turn: one row, result on stdout, rc 0, per-model usage kept, cost labelled as list
+fresh; out=$(run "$GOOD" --trigger t1 "hello" 2>&1); rc=$?
+[ $rc = 0 ] && [ "$out" = TURN-OK ] && [ "$(rows)" = 1 ] && ok "good turn: rc 0, result printed, one row" \
+  || bad "good turn" "rc=$rc out=$out rows=$(rows)"
+[ "$(field 'sorted(r[0]["usage"])')" = '["m-big", "m-small"]' ] && ok "usage kept per model (two models, two keys)" \
+  || bad "per-model usage" "$(field 'r[0]["usage"]')"
+[ "$(field 'r[0]["list_cost_usd"]')" = 0.25 ] && [ "$(field '"costUSD" in json.dumps(r[0]) or "cost_usd" in r[0]')" = false ] \
+  && ok "cost recorded only as list_cost_usd" || bad "cost label" "$(field 'r[0]')"
+[ "$(field 'r[0]["trigger"]')" = '"t1"' ] && [ "$(field '"hello" in json.dumps(r[0])')" = false ] \
+  && ok "trigger recorded; prompt text not in the ledger" || bad "trigger/prompt" "$(field 'r[0]')"
+
+# 2. failed turns still get a row (the ledger must not undercount exactly the turns worth seeing)
+for c in "nonzero:echo boom >&2; exit 3:3" "garbage:echo not-json:65" \
+         "is_error:echo '{\"is_error\":true,\"subtype\":\"error_max_turns\",\"modelUsage\":{}}':1" \
+         "missing-binary::127"; do
+  name=${c%%:*}; rest=${c#*:}; body=${rest%:*}; want=${rest##*:}
+  fresh
+  if [ "$name" = missing-binary ]; then cl=$T/nope; else cl=$(stub "s_$name" "$body"); fi
+  run "$cl" --trigger t "p" >/dev/null 2>&1; rc=$?
+  err=$(field 'r[0]["error"] if r else None')
+  [ $rc = "$want" ] && [ "$(rows)" = 1 ] && [ "$err" != null ] && ok "failed turn ($name): rc $want and a row with an error" \
+    || bad "failed turn ($name)" "rc=$rc want=$want rows=$(rows) error=$err"
+done
+# no claude output text reaches the 644 ledger on ANY path: unparseable stdout, an empty stdout with
+# text on stderr, and valid JSON that isn't an object all carry the canary; the raw file must not.
+for c in "stdout:echo CANARY-\$\$-out" "stderr:echo CANARY-\$\$-err >&2; exit 4" "array:echo '[\"CANARY-'\$\$'-arr\"]'"; do
+  name=${c%%:*}; body=${c#*:}; fresh; cl=$(stub "canary_$name" "$body")
+  run "$cl" --trigger t "p" >/dev/null 2>&1; rc=$?
+  err=$(field 'r[0]["error"] if r else None')
+  if grep -q CANARY "$L"; then bad "no output text in the ledger ($name)" "canary found: $(grep -o 'CANARY[^\"]*' "$L" | head -1)"
+  elif [ "$(rows)" != 1 ] || ! printf '%s' "$err" | grep -Eq '^"unparseable output: (stdout|stderr) [0-9]+ bytes, sha256 [0-9a-f]{64}"$'; then
+    bad "no output text in the ledger ($name)" "rc=$rc rows=$(rows) error=$err"
+  else ok "no output text in the ledger ($name): length and sha256 only"; fi
+done
+fresh; SLOW=$(stub slow "sleep 30; echo '$J'")
+run "$SLOW" --timeout 1 --trigger t "p" >/dev/null 2>&1; rc=$?
+[ $rc = 124 ] && [ "$(rows)" = 1 ] && [ "$(field 'r[0]["error"].startswith("timeout")')" = true ] \
+  && ok "timeout: rc 124 and a row" || bad "timeout" "rc=$rc rows=$(rows)"
+# a timeout kills what claude spawned, not only claude (a real claude runs node, MCP servers, tools)
+fresh; tag="turnctl-orphan-$$"; KID=$(stub kid "exec -a $tag sleep 40 & wait")
+s0=$SECONDS; run "$KID" --timeout 1 --trigger t "p" >/dev/null 2>&1; took=$((SECONDS-s0)); sleep 0.3
+if ps -eo args= | grep -qx "$tag 40" || [ $took -gt 5 ]; then
+  bad "timeout kills the process group" "a child of claude outlived the turn, or the turn waited for it (${took}s)"
+  for p in $(ps -eo pid=,args= | awk -v t="$tag" '$2==t {print $1}'); do kill "$p"; done
+else ok "timeout kills the process group (no orphan)"; fi
+
+# 3. stdin: claude must get /dev/null, never the caller's stdin. The stub drains stdin; fed a pipe
+#    that stays open, an inherited stdin hangs it until the timeout.
+fresh; EATER=$(stub eater "cat >/dev/null; echo '$J'")
+out=$( (sleep 20; echo leak) | run "$EATER" --timeout 5 --trigger t "p" 2>&1); rc=$?
+[ $rc = 0 ] && [ "$out" = TURN-OK ] && ok "stdin is /dev/null (a stdin-draining claude returns at once)" \
+  || bad "stdin" "rc=$rc out=$out"
+
+# 4. lock: while another holder has the ledger flock'd, a turn must wait to append
+fresh; LOCKT=$(at "$GOOD")
+python3 - "$L" "$LOCKT" <<'EOF' && ok "append waits for the ledger lock" || bad "lock" "turn appended while the ledger was locked"
+import fcntl, os, subprocess, sys, time
+L, TURN = sys.argv[1:]
+fd = os.open(L, os.O_RDWR); fcntl.flock(fd, fcntl.LOCK_EX)
+p = subprocess.Popen([TURN, "--trigger", "t", "p"],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+time.sleep(1.5)
+early = p.poll() is not None or os.path.getsize(L) > 0
+fcntl.flock(fd, fcntl.LOCK_UN); os.close(fd)
+p.wait(timeout=20)
+sys.exit(1 if early or os.path.getsize(L) == 0 else 0)
+EOF
+
+# 5. concurrency: 24 turns at once give 24 parseable rows, and each row's secs_since_prev_turn
+#    is computed from the row physically before it
+fresh; JIT=$(stub jit "sleep 0.\$((RANDOM%5)); echo '$J'"); JITT=$(at "$JIT")
+for i in $(seq 24); do "$JITT" --trigger "c$i" "p" >/dev/null 2>&1 & done; wait
+python3 - "$L" <<'EOF' && ok "24 concurrent turns: 24 rows, predecessor chain consistent" || bad "concurrency" "see above"
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1])]
+assert len(rows) == 24, len(rows)
+assert sorted(r["trigger"] for r in rows) == sorted(f"c{i}" for i in range(1, 25))
+assert rows[0]["secs_since_prev_turn"] is None
+for a, b in zip(rows, rows[1:]):
+    want = round(b["ts_start_epoch"] - a["ts_end_epoch"], 3)
+    assert abs(b["secs_since_prev_turn"] - want) < 0.002, (a["trigger"], b["trigger"], b["secs_since_prev_turn"], want)
+EOF
+
+# 6. the ledger is never followed or created: a symlinked ledger is refused, a missing one is rc 75
+fresh; echo precious > "$T/target"; rm "$L"; ln -s "$T/target" "$L"
+run "$GOOD" --trigger t "p" >/dev/null 2>&1; rc=$?
+[ $rc = 75 ] && [ "$(cat "$T/target")" = precious ] && ok "symlinked ledger refused (rc 75, target untouched)" \
+  || bad "symlink" "rc=$rc target=$(cat "$T/target")"
+rm -f "$L"; run "$GOOD" --trigger t "p" >/dev/null 2>&1; rc=$?
+[ $rc = 75 ] && [ ! -e "$L" ] && ok "missing ledger: rc 75, not created" || bad "missing ledger" "rc=$rc"
+
+# 7. environment: none of the caller's reaches claude or turn. ANTHROPIC_API_KEY would move the turn
+#    off the tenant's OAuth loan while still writing a normal row; CLAUDE_CONFIG_DIR moves the session
+#    store; a json.py on PYTHONPATH would replace the parser that writes the row.
+fresh; ENVSPY=$(stub envspy "env > '$T/claude-env'; echo '$J'")
+mkdir -p "$T/hijack"; printf 'raise SystemExit("hijacked json imported")\n' > "$T/hijack/json.py"
+out=$(ANTHROPIC_API_KEY=sk-leak CLAUDE_CONFIG_DIR=$T/elsewhere PYTHONPATH=$T/hijack PYTHONSTARTUP=$T/hijack/json.py \
+      run "$ENVSPY" --trigger t "p" 2>&1); rc=$?
+leaked=$(grep -E '^(ANTHROPIC_API_KEY|CLAUDE_CONFIG_DIR|PYTHONPATH|PYTHONSTARTUP)=' "$T/claude-env" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')
+[ $rc = 0 ] && [ "$out" = TURN-OK ] && [ "$(rows)" = 1 ] && [ -z "$leaked" ] \
+  && ok "caller env reaches neither claude nor turn (key, config dir, PYTHONPATH hijack)" \
+  || bad "environment" "rc=$rc out=$out rows=$(rows) leaked=[$leaked]"
+want_env="HOME LANG LOGNAME PATH USER"
+got_env=$(grep -v '^_=\|^PWD=\|^SHLVL=' "$T/claude-env" | cut -d= -f1 | sort | tr '\n' ' ' | sed 's/ $//')
+[ "$got_env" = "$want_env" ] && ok "claude's environment is exactly $want_env" || bad "fixed env" "got [$got_env]"
+# env -i alone still leaves python's USER site on (found via the passwd entry, not $HOME), so a .pth
+# or usercustomize.py in the tenant's ~/.local/lib/python3.*/site-packages would run inside turn.
+# -I turns it off. Tested on a copy with one instrumentation line added, run through the real shebang.
+probe=$T/turn.siteprobe
+sed -e "s|^LEDGER = .*|LEDGER = '$L'|" -e "s|^CLAUDE = .*|CLAUDE = '$GOOD'|" \
+    -e "s|^SCHEMA = 1\$|SCHEMA = 1; import site as _s; open('$T/usersite','w').write(str(_s.ENABLE_USER_SITE))|" "$TURN" > "$probe"
+chmod 755 "$probe"; fresh; "$probe" --trigger t p >/dev/null 2>&1
+[ "$(cat "$T/usersite" 2>/dev/null)" = False ] && ok "python runs with the user site off (-I)" \
+  || bad "user site" "ENABLE_USER_SITE=$(cat "$T/usersite" 2>/dev/null || echo unreadable)"
+
+# 8. no caller can move the ledger or the binary, and --resume reaches claude
+fresh; "$(at "$GOOD")" --ledger "$T/other" --trigger t "p" >/dev/null 2>&1; rc1=$?
+"$(at "$GOOD")" --claude "$T/other" --trigger t "p" >/dev/null 2>&1; rc2=$?
+[ $rc1 = 2 ] && [ $rc2 = 2 ] && [ ! -e "$T/other" ] && [ "$(rows)" = 0 ] && ok "--ledger and --claude are refused (rc 2)" \
+  || bad "fixed targets" "rc1=$rc1 rc2=$rc2 rows=$(rows)"
+fresh; ARGSPY=$(stub argspy "printf '%s\n' \"\$@\" > '$T/claude-args'; echo '$J'")
+run "$ARGSPY" --resume sess-123 --trigger t "p" >/dev/null 2>&1
+grep -qx -- --resume "$T/claude-args" && grep -qx sess-123 "$T/claude-args" && [ "$(field 'r[0]["resume"]')" = '"sess-123"' ] \
+  && [ "$(field 'r[0]["api_duration_ms"]')" = 42 ] && [ "$(field 'r[0]["usage_scope"]')" = '"session_cumulative"' ] \
+  && ok "--resume passed to claude and recorded; api_duration_ms and usage_scope kept" \
+  || bad "resume" "args=$(tr '\n' ' ' < "$T/claude-args") row=$(field 'r[0]')"
+
+echo "$pass ok, $fail failed"
+[ $fail = 0 ]

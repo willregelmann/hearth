@@ -139,11 +139,11 @@ as_t chmod 644 "$ledger"
 JUDGE=/opt/hearth/home
 here=$(cd "$(dirname "$0")" && pwd)
 run install -d -o root -g root -m 755 /opt/hearth "$JUDGE"
-for f in check inventory; do
+for f in check inventory turn; do
   if [ -e "$JUDGE/$f" ] && ! cmp -s "$here/$f" "$JUDGE/$f"; then
     die "$JUDGE/$f exists and differs from $here/$f (another revision?); replace it by hand"
   fi
-  run install -o root -g root -m "$([ $f = check ] && echo 755 || echo 644)" "$here/$f" "$JUDGE/$f"
+  run install -o root -g root -m "$([ $f = inventory ] && echo 644 || echo 755)" "$here/$f" "$JUDGE/$f"
 done
 
 # 6. sudo, proved root-side (from inside, sudo can't tell no-rules from password-rules). Written
