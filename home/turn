@@ -1,0 +1,170 @@
+#!/usr/bin/python3
+"""home/turn: the turn runner. One model turn as the tenant, one ledger row per turn.
+
+    turn --trigger <name> [--model M] [--timeout S] <prompt>
+
+Runs `claude -p --output-format json <prompt>` with stdin from /dev/null, prints the result text
+on stdout, and appends exactly one row to ~/.hearth/ledger.jsonl, including when the turn fails.
+It exits with the turn's status: 0 ok, the claude rc on failure, 124 on timeout, 65 on output
+that isn't the expected JSON. Exit 75 means the row couldn't be written: the turn may have
+happened and been lost, so that is loud.
+
+What a row is, and isn't:
+  - Written by the tenant, so it's the tenant's CLAIM about its usage, not an observation. It's
+    good for telemetry; don't treat it as an audit.
+  - No prompt or result text: the ledger is 644 so will can read it. prompt_sha256 and
+    result_chars identify a turn without publishing it.
+  - list_cost_usd is Claude Code's costUSD, a LIST price (costBasis "list"). On a Max plan
+    nobody is billed that per turn.
+  - usage is per model, as Claude Code reports it. A turn can use more than one model.
+
+Concurrency: the turn itself runs unlocked. The ledger is flock'd only around "read the last row,
+append mine", and each row is one write(), so concurrent turns can't interleave or both read the
+same predecessor.
+
+This file is installed root-owned in /opt/hearth/home, next to check, so the tenant can't edit
+what records it.
+"""
+import argparse, fcntl, hashlib, json, os, pwd, signal, subprocess, sys, time
+from datetime import datetime, timezone
+
+SCHEMA = 1
+EX_TIMEOUT, EX_DATAERR, EX_TEMPFAIL = 124, 65, 75
+
+
+def utc(t):
+    return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def per_model(model_usage):
+    out = {}
+    for name, u in (model_usage or {}).items():
+        out[name] = {
+            "input_tokens": u.get("inputTokens"),
+            "output_tokens": u.get("outputTokens"),
+            "cache_read_tokens": u.get("cacheReadInputTokens"),
+            "cache_write_tokens": u.get("cacheCreationInputTokens"),
+            "thinking_tokens": u.get("thinkingTokens"),
+            "web_search_requests": u.get("webSearchRequests"),
+            "list_cost_usd": u.get("costUSD"),
+            "cost_basis": u.get("costBasis"),
+        }
+    return out
+
+
+def last_row(fd):
+    """The last complete row in the ledger, read through fd (held under the lock)."""
+    size = os.fstat(fd).st_size
+    if size == 0:
+        return None
+    chunk = min(size, 65536)
+    data = os.pread(fd, chunk, size - chunk)
+    for line in reversed(data.splitlines()):
+        if line.strip():
+            try:
+                return json.loads(line)
+            except ValueError:
+                return {"_unparseable": True}
+    return None
+
+
+def append(ledger, row):
+    # O_NOFOLLOW: a ledger that is a symlink is refused, never followed. No O_CREAT: provision
+    # creates the ledger, so a missing one is a HOME failure to surface, not to paper over.
+    fd = os.open(ledger, os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        prev = last_row(fd)
+        prev_end = prev.get("ts_end_epoch") if isinstance(prev, dict) else None
+        row["secs_since_prev_turn"] = (
+            round(row["ts_start_epoch"] - prev_end, 3) if isinstance(prev_end, (int, float)) else None)
+        data = (json.dumps(row, separators=(",", ":"), sort_keys=True) + "\n").encode()
+        n = os.write(fd, data)
+        if n != len(data):
+            raise OSError(f"short write {n}/{len(data)}")
+        os.fsync(fd)
+    finally:
+        os.close(fd)   # releases the lock
+
+
+def main(argv=None):
+    me = pwd.getpwuid(os.getuid())
+    ap = argparse.ArgumentParser(prog="turn")
+    ap.add_argument("--trigger", required=True, help="why this turn ran: check, cron, will, ...")
+    ap.add_argument("--model")
+    ap.add_argument("--timeout", type=float, default=300)
+    ap.add_argument("--ledger", default=os.path.join(me.pw_dir, ".hearth", "ledger.jsonl"))
+    ap.add_argument("--claude", default=os.path.join(me.pw_dir, ".local", "bin", "claude"))
+    ap.add_argument("prompt")
+    a = ap.parse_args(argv)
+
+    cmd = [a.claude, "-p", "--output-format", "json"]
+    if a.model:
+        cmd += ["--model", a.model]
+    cmd.append(a.prompt)
+
+    row = {
+        "v": SCHEMA, "user": me.pw_name, "trigger": a.trigger, "model_requested": a.model,
+        "prompt_sha256": hashlib.sha256(a.prompt.encode()).hexdigest(),
+        "rc": None, "error": None, "session_id": None, "num_turns": None, "is_error": None,
+        "stop_reason": None, "result_chars": None, "usage": None, "list_cost_usd": None,
+    }
+    t0 = time.time()
+    row["ts_start"], row["ts_start_epoch"] = utc(t0), round(t0, 3)
+    result, status = None, 0
+    try:
+        # Own process group, so a timeout kills claude AND everything it spawned (node, MCP
+        # servers, tools). Killing only the direct child leaves those running as orphans.
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, cwd=me.pw_dir, start_new_session=True)
+        try:
+            out, err = proc.communicate(timeout=a.timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+            raise
+        p = subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+        row["rc"] = p.returncode
+        try:
+            d = json.loads(p.stdout)
+            if not isinstance(d, dict):
+                raise ValueError("not an object")
+        except ValueError:
+            d = None
+            row["error"] = "unparseable output: " + (p.stdout or p.stderr)[-300:].decode(errors="replace")
+            status = p.returncode or EX_DATAERR
+        if d is not None:
+            result = d.get("result")
+            row.update(session_id=d.get("session_id"), num_turns=d.get("num_turns"),
+                       is_error=d.get("is_error"), stop_reason=d.get("stop_reason"),
+                       result_chars=len(result) if isinstance(result, str) else None,
+                       usage=per_model(d.get("modelUsage")) or None,
+                       list_cost_usd=d.get("total_cost_usd"))
+            if p.returncode != 0 or d.get("is_error"):
+                row["error"] = "turn error: " + str(d.get("subtype") or d.get("api_error_status") or "")
+                status = p.returncode or 1
+    except subprocess.TimeoutExpired:
+        row["error"], status = f"timeout after {a.timeout}s", EX_TIMEOUT
+    except OSError as e:
+        row["error"], status = f"could not run {a.claude}: {e}", 127
+    t1 = time.time()
+    row["ts_end"], row["ts_end_epoch"] = utc(t1), round(t1, 3)
+    row["duration_ms"] = int((t1 - t0) * 1000)
+
+    try:
+        append(a.ledger, row)
+    except OSError as e:
+        print(f"turn: LEDGER NOT WRITTEN ({a.ledger}): {e}; row was: {json.dumps(row)}", file=sys.stderr)
+        return EX_TEMPFAIL
+    if row["error"]:
+        print(f"turn: {row['error']}", file=sys.stderr)
+    if isinstance(result, str):
+        print(result)
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main())
