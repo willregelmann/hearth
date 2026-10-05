@@ -27,7 +27,7 @@ INV=${1:-$DEFAULT_INV}
 LEDGER="$HOME/.hearth/ledger.jsonl"
 # Items the run must contain, with the check each must use, whatever the list says: an inventory that
 # drops one, or swaps its check for a weaker one (e.g. declared_absent), can't pass.
-REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant memory:no_memory"
+REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant memory:no_memory loan_reach:loan_reach"
 # Membership in any of these is root without a sudoers rule. provision denies the same list.
 ROOT_GROUPS="sudo admin wheel docker lxd libvirt"
 ATTEST_DIR=/opt/hearth/home/attest; ATTEST_OWNER=root
@@ -231,6 +231,30 @@ c_inbound_custody() {
   done < <(getent passwd)
   [ -n "$who" ] || { echo "no other account in a root-equivalent group, but sudoers rules for other users aren't readable as $USER: unverified, prove it from outside"; return 1; }
   echo "other accounts with root:$who. Not exclusive custody; accepted by Will's soft-boundary decision (invariants/SYNTHESIS-round1.md)"
+  return 4
+}
+# What the loaned claude.ai login brings with it besides model access (Buster's turns 1-2): Will's
+# claude.ai skills, synced into ~/.claude/skills/synced/, and his claude.ai connectors. Will chose to
+# leave the token alone for now (connectors KNOWN, 2026-10-05), so this is KNOWN (never GREEN), and
+# RED only if check can't look.
+# Skills are listed by their SKILL.md name. Connectors are fetched per session and leave nothing on
+# disk to read, so they are named as reachable, not enumerated (docs read 2026-10-05: on unless
+# disableClaudeAiConnectors or ENABLE_CLAUDEAI_MCP_SERVERS=false; check reads neither).
+# None on disk doesn't mean none loaned: a short -p run can end before the sync lands.
+c_loan_reach() {
+  d="$CLAUDE_HOME/skills/synced"; names=""
+  if [ -e "$d" ] || [ -L "$d" ]; then
+    out=$(find -L "$d" -mindepth 2 -maxdepth 2 -name SKILL.md -print 2>&1); rc=$?
+    [ $rc = 0 ] || { echo "couldn't look in $d (find rc $rc): $(echo "$out" | head -n 3 | tr '\n' ' ')"; return 1; }
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      # tenant-written text goes to the reader's terminal: keep it to name characters
+      n=$(head -c 4096 "$f" 2>/dev/null | grep -m1 -E '^name:' | cut -d: -f2- | tr -cd 'A-Za-z0-9._-')
+      names="$names ${n:-?}"
+    done <<< "$out"
+  fi
+  n=$(echo $names | wc -w)
+  echo "Will's claude.ai skills synced: $n$( [ "$n" = 0 ] || echo " [$(echo $names | tr ' ' '\n' | sort | head -n 20 | tr '\n' ' ' | sed 's/ $//')]"); claude.ai connectors: reachable, not enumerated. Accepted with the token (Will, 2026-10-05)"
   return 4
 }
 # the judged party must not be able to edit its judge: neither this script, the inventory, nor any

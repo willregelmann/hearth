@@ -9,6 +9,7 @@ user        | own    | tenant      | provision (Will, sudo)   | user_exists:agen
 home_dir    | own    | tenant      | provision                | home_private:user:will:--x
 claude_bin  | own    | tenant      | native installer, as tenant | claude_runs:2.1.288
 oauth       | loan   | Will        | Anthropic (Max)          | model_turn
+loan_reach  | loan   | Will        | claude.ai account, via oauth | loan_reach
 ledger      | own    | tenant      | turn runner              | ledger_writable
 custody     | own    | tenant      | OS user boundary         | others_unreadable
 custody_in  | own    | tenant      | OS user boundary         | inbound_custody
