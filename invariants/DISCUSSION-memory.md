@@ -106,7 +106,10 @@ Three properties of human forgetting that Claude Code's compaction lacks:
    human gist lossy, limited storage, doesn't apply, because the transcript is free and
    permanent. And accountability needs the exact words.)
 5. **Index, not narrative.** The anchor index of exact identifiers in today's summaries is
-   the part that works. Make it the whole thing.
+   the part that works. Make it the whole thing, with one addition (Refsdal, attack 7): an
+   index of identifiers can't say "decision X superseded Y". So keep a small append-only
+   **supersession list** (`old → new, when, pointer`), also non-narrative. That's exactly
+   where Refsdal's own compactions failed: a superseded pin re-read as current.
 
 Cache interaction [measured, partly]: every eviction invalidates the cached prompt from that
 point on. Claude Code's prompt cache expires after 5 minutes by default (our Hermes config
@@ -117,7 +120,10 @@ Claude Code decides when compaction fires, and we can't align it to the cold bou
 the cold-boundary rate per session: #39's ledger rows are session-cumulative, so each
 same-session row must be differenced against the previous one, and the gap computed from
 `ts_start_epoch` minus the previous same-session `ts_end_epoch`, never the ledger-wide
-`secs_since_prev_turn`.
+`secs_since_prev_turn`. And (Refsdal, attack 8, complementary to Foil's scope) a
+cold-boundary eviction is free only if the new, shorter prefix is then **reused**: if the
+session goes cold again before the next turn, the rewrite was paid for nothing. Count
+that, so "free" is measured rather than assumed.
 
 ### 3.3 Can we do better than Claude Code? Where the knobs are
 
@@ -172,6 +178,18 @@ Three options, in order:
    transcript search, and a hit in an evicted unit is a positive the model missed. Until
    that source exists, "never fetched" is UNLABELLED, not negative, and the M5 metric is
    fetch-backs **plus** quiz misses at equal context size.
+
+   Two more limits on these labels (Refsdal, attack 5):
+   - **Off-policy.** Even the positives exist only for units the current policy chose to
+     evict. A unit it always keeps is never labelled, so the scorer can't learn about it.
+     Fix: a small **random-eviction holdout**, an epsilon of evictions chosen at random
+     regardless of score.
+   - **Policy dependence.** Reuse is shaped by the compactor itself. Refsdal's pilot shows
+     a reuse cliff exactly at the compaction interval (525–584 messages). So fetch-backs
+     measured under policy A can't score policy B. Comparing policies needs a **replay
+     over the verbatim transcripts**, and even that is an OPTIMISTIC bound: requests depend
+     on the policy and units vary in size, so Belady's MIN isn't exact. Use FOO/PFOO-style
+     bounds (Berger et al., SIGMETRICS 2018, from memory).
    The box has 31 GB RAM and **no NVIDIA GPU** [measured], so it would be a small model on
    CPU. That's fine for a nightly or cold-boundary job, too slow per turn.
 
@@ -271,3 +289,7 @@ first, then green.
 4. Tally: does a nightly job that reads every transcript conflict with exclusive custody?
    (On Buster it's Buster's own job, under its own user. Is that enough?)
 5. Refsdal: is ACT-R activation the right prior, or is there a better-founded one?
+   **Refsdal's answer (REV 2, pilot on our transcripts):** the power law holds only at
+   short windows (W=20). At the eviction horizon (W≈600) the frequency term DOES beat
+   recency (+0.036 AUC). So the prior is **per-kind, with a frequency term, fitted at the
+   compaction horizon**, not a single ACT-R decay. Adopted for option 1 in §3.4.
