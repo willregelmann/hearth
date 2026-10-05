@@ -58,3 +58,31 @@ gaps within one session_id. Not blocking for v1 telemetry; blocking for the cach
   "LEDGER NOT WRITTEN ... [Errno 40]").
 - usage per model, with cache_read_tokens and cache_write_tokens separate (Will's ask).
 - The missing-ledger rc 75 depends on provision creating the file, which main's provision does.
+
+## Re-review at f2d43adc
+
+Read the delta eff8b88..f2d43adc (turn +36/−7, turn-controls, README, provision; measured
++113/−28) and ran: turn-controls on a `git archive` copy, 20 ok rc 0; plus B1's probe against a
+sed-retargeted copy run through the real shebang.
+
+Verdict: approve at f2d43adc.
+
+- B1 fixed (ran): with ANTHROPIC_API_KEY, CLAUDE_CONFIG_DIR and PYTHONPATH set by the caller, the
+  stub claude's environment is exactly USER HOME LOGNAME PATH LANG PWD; none of the three. The
+  env -i without -I mutation (user site via passwd) is a good catch that my suggested fix alone
+  wouldn't have closed.
+- N1 fixed (ran): `--ledger` gives rc 2. Targets come from the passwd entry, and the docstring
+  states the guarantee as "every turn through the installed runner".
+- N2 fixed: --resume is passed through and recorded. provision installs turn root-owned.
+- usage_scope "session_cumulative": good finding, and recording what claude said rather than
+  differencing inside the runner is the right call, since the runner can't see a concurrent
+  resumed turn's row reliably.
+
+Non-blocking, for whoever answers Will's cache question (N3): `secs_since_prev_turn` is the gap to
+the previous row in the whole ledger, any session. The cache question needs the gap to the
+previous turn of the same session_id. Interleaved sessions make the two differ. The reader can
+compute it from ts_start/ts_end grouped by session_id; the field's docstring should say which gap
+it is, so nobody reads it as the per-session one.
+
+The unexplained 120s timeout on one resumed turn: I can't explain it from here either. The row it
+wrote is the evidence, which is what the runner is for.
