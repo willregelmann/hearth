@@ -53,7 +53,15 @@ ENV = {"HOME": _pw.pw_dir, "USER": _pw.pw_name, "LOGNAME": _pw.pw_name,
        "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8",
        # memory is declared absent; the tenant owns settings.json and could flip autoMemoryEnabled,
        # so the switch that counts lives here, where the tenant can't reach it (Will, 2026-10-05)
-       "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
+       "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+       # the tenant signs in on a LOAN of Will's claude.ai account; it must not reach his connectors
+       # (Drive, Gmail, ...) or his synced skills/plugins (Will, 2026-10-05). Env covers connectors only.
+       "ENABLE_CLAUDEAI_MCP_SERVERS": "false"}
+# Skills and plugins sync have no env switch. --settings sits above every tenant-owned settings file
+# (below managed only), and a false there is honoured for both sync keys; a true for
+# disableClaudeAiConnectors is honoured from any scope. So the tenant can't turn these back on.
+LOAN_OFF = json.dumps({"disableClaudeAiConnectors": True, "syncClaudeAiSkills": False,
+                       "syncClaudeAiPlugins": False}, sort_keys=True)
 
 SCHEMA = 1
 # Will 2026-10-05: tenant turns run on Sonnet unless the caller names a model. An unpinned turn took
@@ -128,7 +136,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     a.ledger, a.claude = LEDGER, CLAUDE
 
-    cmd = [a.claude, "-p", "--output-format", "json"]
+    cmd = [a.claude, "-p", "--output-format", "json", "--settings", LOAN_OFF]
     if a.model:
         cmd += ["--model", a.model]
     if a.resume:

@@ -118,11 +118,13 @@ nolink "$H/.claude" "$settings"
 if tq test -e "$settings"; then
   tq grep -q DISABLE_AUTOUPDATER "$settings" || die "$settings exists without DISABLE_AUTOUPDATER; add it by hand"
   tq grep -q '"autoMemoryEnabled": *false' "$settings" || die "$settings exists without \"autoMemoryEnabled\": false; add it by hand (memory is declared absent)"
+  tq grep -q '"disableClaudeAiConnectors": *true' "$settings" && tq grep -q '"syncClaudeAiSkills": *false' "$settings" \
+    || die "$settings exists without \"disableClaudeAiConnectors\": true and \"syncClaudeAiSkills\": false; add them by hand (the tenant must not reach the claude.ai account it borrows)"
   echo "= $settings present"
 else
   as_t mkdir -p "$H/.claude"
   [ $DRY = 1 ] && echo "+ write $settings" || \
-    sudo -u "$T" -H sh -c "umask 077; printf '%s\n' '{\"autoMemoryEnabled\": false, \"env\": {\"DISABLE_AUTOUPDATER\": \"1\", \"CLAUDE_CODE_DISABLE_AUTO_MEMORY\": \"1\"}}' > '$settings'"
+    sudo -u "$T" -H sh -c "umask 077; printf '%s\n' '{\"autoMemoryEnabled\": false, \"disableClaudeAiConnectors\": true, \"syncClaudeAiSkills\": false, \"syncClaudeAiPlugins\": false, \"env\": {\"DISABLE_AUTOUPDATER\": \"1\", \"CLAUDE_CODE_DISABLE_AUTO_MEMORY\": \"1\", \"ENABLE_CLAUDEAI_MCP_SERVERS\": \"false\"}}' > '$settings'"
 fi
 
 # 4. ledger: written only by the tenant, readable by READER through the home's --x.
