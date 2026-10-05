@@ -259,4 +259,29 @@ expect "memory: declared_absent in place of no_memory is RED as required" \
   $(grep -q '^RED    memory .*required as memory:no_memory' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
 cp "$here/inventory" "$t/inventory"; memreset
 
+# 18. what the loaned login reaches is KNOWN, never GREEN: synced skills are listed by name (tenant
+# text sanitised), a place check can't look into is RED, and the line can't be dropped.
+loanrun() { "$t/memc" --no-model > "$t/out" 2>&1; grep ' loan_reach ' "$t/out"; }
+memreset; l=$(loanrun)
+expect "loan: no synced skills is KNOWN with 0, not GREEN" $(echo "$l" | grep -qE '^KNOWN  loan_reach .*skills synced: 0;'; echo $?) "$l"
+memreset; s="$m/.claude/skills/synced"; mkdir -p "$s/0b1c" "$s/9f2e"
+printf -- '---\nname: import-memory\n---\nbody\n' > "$s/0b1c/SKILL.md"
+printf -- '---\nname: x\033[31mred\n---\n' > "$s/9f2e/SKILL.md"; l=$(loanrun)
+expect "loan: synced skills KNOWN by name, escape bytes stripped" \
+  $(echo "$l" | grep -qE '^KNOWN  loan_reach .*skills synced: 2 \[import-memory x31mred\]' && ! echo "$l" | grep -q $'\033'; echo $?) "$(echo "$l" | cat -v)"
+expect "loan: synced skills don't make memory RED" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+if [ "$(id -u)" = 0 ]; then echo "SKIP loan mode-000: root reads a mode-000 dir"; fail=1
+else
+memreset; mkdir -p "$m/.claude/skills/synced/0b1c"; chmod 000 "$m/.claude/skills/synced"; l=$(loanrun)
+expect "loan: a synced dir check can't read is RED" $(echo "$l" | grep -q '^RED    loan_reach .*couldn.t look'; echo $?) "$l"
+fi
+# a FIFO SKILL.md (Ash on #47): opening it would block, so check must still return. Under a timeout.
+memreset; mkdir -p "$m/.claude/skills/synced/b"; mkfifo "$m/.claude/skills/synced/b/SKILL.md"
+timeout 20 "$t/memc" --no-model > "$t/out" 2>&1; frc=$?; l=$(grep ' loan_reach ' "$t/out")
+expect "loan: a FIFO SKILL.md reads as '?' and check returns" \
+  $([ $frc != 124 ] && echo "$l" | grep -qF 'skills synced: 1 [?]'; echo $?) "rc=$frc $l"
+memreset; grep -v '^loan_reach ' "$here/inventory" > "$t/inventory"; l=$(loanrun)
+expect "loan: dropping the line is RED as required" $(echo "$l" | grep -q 'required as loan_reach:loan_reach'; echo $?) "$l"
+cp "$here/inventory" "$t/inventory"; memreset
+
 exit $fail
