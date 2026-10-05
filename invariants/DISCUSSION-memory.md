@@ -328,7 +328,12 @@ actually cited in the reply.
      case.) So three things are fixed in the labelling README before any row is read: the
      baseline recall on the R rows (expected near 0, re-run before any candidate), the
      minimum k (10), and the gain bar. Near p = 0 the decision is an exact paired test
-     (McNemar), not the normal approximation.
+     (McNemar), not the normal approximation. Pre-registered with it (Refsdal, rev 2, before
+     any row): α = 0.05 one-sided; at k < 20 McNemar is what decides (b ≥ 5 discordant
+     wins needed, i.e. an effective bar of 5/k); a **non-inferiority arm** on non-R queries
+     (recall@10 may not drop by ≥ 0.05) so a candidate can't win by trading old hits for new;
+     both tests must pass (intersection-union, deliberately no OR); and the deciding rows
+     are disjoint from anything trained or tuned on.
      (b) keep the week-4 replay as an **evaluation** of today's retriever plus associations,
      read as an **optimistic bound**: it sees only queries that were actually issued, so it
      flatters every candidate (Refsdal, REV 2 (B));
