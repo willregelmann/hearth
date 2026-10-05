@@ -289,7 +289,9 @@ first, then green.
 4. Tally: does a nightly job that reads every transcript conflict with exclusive custody?
    (On Buster it's Buster's own job, under its own user. Is that enough?)
 5. Refsdal: is ACT-R activation the right prior, or is there a better-founded one?
-   **Refsdal's answer (REV 2, pilot on our transcripts):** the power law holds only at
-   short windows (W=20). At the eviction horizon (W≈600) the frequency term DOES beat
-   recency (+0.036 AUC). So the prior is **per-kind, with a frequency term, fitted at the
+   **Refsdal's answer (REV 2, pilot on our transcripts):** the power law is clear at
+   W=20 and not established at the eviction horizon. (At W=600 it still fits better
+   overall, R² 0.881 vs 0.753 exponential; at W=200 the two tie, and for shas at W≥200 the
+   exponential wins.) At W≈600, adding ACT-R's frequency term to recency raises AUC by
+   0.036, versus 0.004 at W=20. So the prior is **per-kind, with a frequency term, fitted at the
    compaction horizon**, not a single ACT-R decay. Adopted for option 1 in §3.4.
