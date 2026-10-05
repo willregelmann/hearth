@@ -140,7 +140,8 @@ fresh; "$(at "$GOOD")" --ledger "$T/other" --trigger t "p" >/dev/null 2>&1; rc1=
 fresh; ARGSPY=$(stub argspy "printf '%s\n' \"\$@\" > '$T/claude-args'; echo '$J'")
 run "$ARGSPY" --resume sess-123 --trigger t "p" >/dev/null 2>&1
 grep -qx -- --resume "$T/claude-args" && grep -qx sess-123 "$T/claude-args" && [ "$(field 'r[0]["resume"]')" = '"sess-123"' ] \
-  && [ "$(field 'r[0]["api_duration_ms"]')" = 42 ] && ok "--resume passed to claude and recorded; api_duration_ms kept" \
+  && [ "$(field 'r[0]["api_duration_ms"]')" = 42 ] && [ "$(field 'r[0]["usage_scope"]')" = '"session_cumulative"' ] \
+  && ok "--resume passed to claude and recorded; api_duration_ms and usage_scope kept" \
   || bad "resume" "args=$(tr '\n' ' ' < "$T/claude-args") row=$(field 'r[0]')"
 
 echo "$pass ok, $fail failed"

@@ -17,6 +17,11 @@ What a row is, and isn't:
   - list_cost_usd is Claude Code's costUSD, a LIST price (costBasis "list"). On a Max plan
     nobody is billed that per turn.
   - usage is per model, as Claude Code reports it. A turn can use more than one model.
+  - usage and list_cost_usd are SESSION-CUMULATIVE, as claude -p reports them: on a --resume'd
+    turn they're the session's running totals, not this turn's (measured: cache_read 12355,
+    24710, 37065 over three resumed turns, while the transcript shows 12355 read per turn). A
+    turn's own figures are this row minus the previous row with the same session_id. The ledger
+    records what claude said, and usage_scope names it.
 
 Concurrency: the turn itself runs unlocked. The ledger is flock'd only around "read the last row,
 append mine", and each row is one write(), so concurrent turns can't interleave or both read the
@@ -129,6 +134,7 @@ def main(argv=None):
         "prompt_sha256": hashlib.sha256(a.prompt.encode()).hexdigest(),
         "rc": None, "error": None, "session_id": None, "api_duration_ms": None, "num_turns": None, "is_error": None,
         "stop_reason": None, "result_chars": None, "usage": None, "list_cost_usd": None,
+        "usage_scope": "session_cumulative",
     }
     t0 = time.time()
     row["ts_start"], row["ts_start_epoch"] = utc(t0), round(t0, 3)

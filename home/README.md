@@ -16,7 +16,9 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   `~/.hearth/ledger.jsonl`, failed turns included. None of the caller's environment reaches it, and
   the ledger and binary can't be redirected. Rows hold per-model usage (cache read and write
   separate) and list_cost_usd (a list price; Max doesn't bill per turn), never prompt or reply
-  text. They're the tenant's own claims, since the tenant writes the file. `turn-controls` tests
+  text. Usage is session-cumulative as claude reports it: on a --resume'd turn, subtract the
+  previous row with the same session_id. Rows are the tenant's own claims, since the tenant writes
+  the file. `turn-controls` tests
   it with stub claudes; each guard's control was shown to fail with the guard removed.
 - `provision`: run by Will with sudo (`--dry-run` changes nothing). Before any change it stops
   unless the host has setfacl and getfacl (the `acl` package, which Raspberry Pi OS doesn't ship)
