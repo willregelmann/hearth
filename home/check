@@ -181,7 +181,7 @@ while IFS='|' read -r item kind owner issuer chk; do
   seen="$seen$item:$chk "
   fn="c_$chk"
   if ! declare -F "$fn" >/dev/null; then printf 'RED    %-11s unknown check %s\n' "$item" "$chk"; bad=1; continue; fi
-  msg=$($fn "$arg" 2>&1); rc=$?
+  msg=$($fn "$arg" 2>&1 </dev/null); rc=$?   # stdin is the inventory: a check that reads it (claude -p does) eats the rest
   if [ "$kind" = absent ] && [ $rc = 0 ] && [ "$chk" != declared_absent ]; then rc=3; msg="absent as declared: $msg"; fi
   case $rc in
     0) printf 'GREEN  %-11s %s\n' "$item" "$msg";;

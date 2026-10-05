@@ -171,4 +171,33 @@ for l in 'tq test -e "$link"' '[ -L "$link" ]' '[ -e "$linkage" ]'; do
 done
 expect "following-test pattern catches [ ], [ ! ], [[ ]], bare test; spares tq and -L" $([ -z "$miss" ]; echo $?) "$miss"
 
+# 16. the model path, which every other control skips with --no-model. A check that reads stdin
+# must not consume the inventory: the first real run (buster, main 507784f) lost every line after
+# oauth because claude -p read the rest of the list as its prompt. Stub claude reads all of stdin,
+# then answers HOME-OK; every item after oauth must still get its own verdict line.
+cat > "$t/claude" <<'EOF'
+#!/bin/sh
+[ "$1" = --version ] && { echo "0.0.0 (stub)"; exit 0; }
+cat > /dev/null
+echo '{"result":"HOME-OK"}'
+EOF
+chmod +x "$t/claude"
+# check's model turn runs from the runner's passwd home; with none (e.g. under `unshare -U`, which
+# maps the runner to nobody, home /nonexistent) the turn fails either way, so the control can't
+# tell a fix from no fix. Same treatment as 12: SKIP is a failure, never a pass.
+rh=$(getent passwd "$(id -un)" | cut -d: -f6)
+if [ ! -d "$rh" ]; then
+  echo "SKIP 16: runner $(id -un) has no home directory ($rh), so the model path can't run here"; fail=1
+else
+sed "s#^CLAUDE=.*#CLAUDE=$t/claude#" "$t/check" > "$t/mc"; chmod +x "$t/mc"
+grep -q "^CLAUDE=$t/claude" "$t/mc" || { echo "FAIL could not retarget CLAUDE"; fail=1; }
+cp "$here/inventory" "$t/inventory"; "$t/mc" > "$t/out" 2>&1
+after=$(grep -v '^\s*#' "$here/inventory" | sed '/^\s*$/d' | sed -n '/model_turn/,$p' | sed 1d | cut -d'|' -f1 | xargs)
+missing=""
+for i in $after; do grep -qE "^[A-Z]+ +$i " "$t/out" || missing="$missing $i"; done
+expect "model path: oauth GREEN via stub, and every later item ($after) still evaluated" \
+  $(grep -q '^GREEN  oauth ' "$t/out" && [ -n "$after" ] && [ -z "$missing" ] && ! grep -q 'required as' "$t/out"; echo $?) \
+  "missing:$missing; $(grep -E 'oauth|required as' "$t/out" | tr '\n' ' ')"
+fi
+
 exit $fail
