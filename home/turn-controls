@@ -130,9 +130,10 @@ leaked=$(grep -E '^(ANTHROPIC_API_KEY|CLAUDE_CONFIG_DIR|PYTHONPATH|PYTHONSTARTUP
 [ $rc = 0 ] && [ "$out" = TURN-OK ] && [ "$(rows)" = 1 ] && [ -z "$leaked" ] \
   && ok "caller env reaches neither claude nor turn (key, config dir, PYTHONPATH hijack)" \
   || bad "environment" "rc=$rc out=$out rows=$(rows) leaked=[$leaked]"
-want_env="HOME LANG LOGNAME PATH USER"
+want_env="CLAUDE_CODE_DISABLE_AUTO_MEMORY HOME LANG LOGNAME PATH USER"
 got_env=$(grep -v '^_=\|^PWD=\|^SHLVL=' "$T/claude-env" | cut -d= -f1 | sort | tr '\n' ' ' | sed 's/ $//')
 [ "$got_env" = "$want_env" ] && ok "claude's environment is exactly $want_env" || bad "fixed env" "got [$got_env]"
+grep -qx 'CLAUDE_CODE_DISABLE_AUTO_MEMORY=1' "$T/claude-env" && ok "auto-memory is off in claude's env (=1)" || bad "auto-memory off" "$(grep AUTO_MEMORY "$T/claude-env")"
 # env -i alone still leaves python's USER site on (found via the passwd entry, not $HOME), so a .pth
 # or usercustomize.py in the tenant's ~/.local/lib/python3.*/site-packages would run inside turn.
 # -I turns it off. Tested on a copy with one instrumentation line added, run through the real shebang.
