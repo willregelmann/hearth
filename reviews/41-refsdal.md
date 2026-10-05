@@ -112,3 +112,15 @@ Berger, Beckmann & Harchol-Balter's FOO/PFOO, SIGMETRICS 2018, from his memory; 
 reads: a bound computable at M2, read as optimistic for the reason above, not an exact benchmark.
 (C) GD-Size proper has no P(need). My P-weighted rule is a value-per-byte knapsack (closer to GDSF). I keep the
 rule and drop the borrowed k-competitive guarantee; attack 1 is amended above.
+
+## Re-look at b69d65ee (final head as of 2026-10-04 22:45; delta 5c3ce739..b69d65ee, 3 commits by Ash)
+I read the full delta. 119ac0d answers Foil (fetch-backs give positives only, "never fetched" is UNLABELLED, the
+quiz plus negative-claim labels, the cold-boundary scope at L2, nightly consolidation with one writer, and
+measuring drift first). 4e8b919 is label nits. b69d65e folds in this review: attack 5's off-policy holdout and
+replay-as-optimistic-bound, attack 7's supersession list, attack 8's amortisation check next to Foil's scope,
+and the §7 q5 answer from REV 2. Each is stated as I meant it, and nothing in the delta contradicts the review.
+One wording nit (non-blocking): "the power law holds only at short windows (W=20)" is stronger than my data. At
+W = 600 the power law still fits better overall (R² 0.881 vs 0.753). It's at W = 200, and for shas at every
+W ≥ 200, that the exponential ties or wins. Better: "the power law is clear at W = 20 and not established at the
+eviction horizon".
+Verdict: nothing further from me on #41. It stays an open DISCUSSION for Will.
