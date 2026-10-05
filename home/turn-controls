@@ -71,7 +71,7 @@ expect "concurrent: only the first row has no predecessor" $([ "$nulls" = 1 ]; e
 # microseconds, so a copy of turn with a 0.2s sleep between the read and the append is used to
 # make it observable. With the lock the sleep is serialized and every row is consistent; without it,
 # turns read the same predecessor and the check fails (both arms ran).
-sed 's/^        pe = prev_end(f)$/        pe = prev_end(f); time.sleep(0.2)/' "$t/turn" > "$t/turn.slow"; chmod +x "$t/turn.slow"
+sed 's/^\( *\)pe = prev_end(f)$/\1pe = prev_end(f); time.sleep(0.2)/' "$t/turn" > "$t/turn.slow"; chmod +x "$t/turn.slow"
 grep -q 'pe = prev_end(f); time.sleep(0.2)' "$t/turn.slow" || { echo "FAIL could not widen the window"; fail=1; }
 : > "$L"; for i in $(seq 8); do "$t/turn.slow" --trigger c hi > /dev/null & done; wait
 incons=$(python3 -c "
@@ -90,5 +90,28 @@ mkdir -p "$t/evil"; printf 'raise SystemExit("hijacked")\n' > "$t/evil/json.py"
 PYTHONPATH=$t/evil PATH=$t/evil:$PATH SECRET=x "$t/turn" --trigger e hi > /dev/null 2>&1; rc=$?
 expect "caller env cleared (PYTHONPATH, PATH, others don't reach claude)" \
   $([ $rc = 0 ] && ! grep -q '^SECRET=' "$t/env" && grep -qx 'PATH=/usr/bin:/bin' "$t/env"; echo $?) "rc=$rc $(tr '\n' ' ' < "$t/env")"
+
+# 7. a timeout kills claude's whole process group: a stub that backgrounds a long sleep must leave
+# no survivor (Ash measured the orphan with plain subprocess.run)
+mk "sleep 40 & echo \$! > '$t/child'; wait"
+s0=$(date +%s); "$t/turn" --trigger to --timeout 1 hi > /dev/null 2>&1; rc=$?; el=$(( $(date +%s) - s0 ))
+sleep 0.3; c=$(cat "$t/child" 2>/dev/null)
+# timed too: if the group isn't killed, turn waits for the orphan to close its pipe, and by the time
+# the child is checked it has exited, so "not alive" alone would pass against a broken runner
+expect "timeout kills the process group (no orphaned child, returns within 5s)" \
+  $([ $rc = 124 ] && [ $el -le 5 ] && [ -n "$c" ] && ! kill -0 "$c" 2>/dev/null; echo $?) "rc=$rc elapsed=${el}s child=$c alive=$(kill -0 "$c" 2>/dev/null && echo yes || echo no)"
+[ -n "$c" ] && kill "$c" 2>/dev/null
+
+# 8. the ledger is provision's: a symlink is refused (target untouched), a missing one isn't created;
+# both exit 75 with the row on stderr, since the turn happened
+mk "echo '$OK'"
+echo keep > "$t/target"; chmod 600 "$t/target"; rm -f "$L"; ln -s "$t/target" "$L"
+"$t/turn" --trigger l hi > /dev/null 2> "$t/err"; rc=$?
+expect "symlinked ledger: rc 75, target untouched, row on stderr" \
+  $([ $rc = 75 ] && [ "$(cat "$t/target")" = keep ] && grep -q 'LEDGER NOT WRITTEN.*row was: {' "$t/err"; echo $?) "rc=$rc target=$(cat "$t/target") $(head -c 120 "$t/err")"
+rm -f "$L"
+"$t/turn" --trigger l hi > /dev/null 2> "$t/err"; rc=$?
+expect "missing ledger: rc 75, not created" $([ $rc = 75 ] && [ ! -e "$L" ]; echo $?) "rc=$rc exists=$([ -e "$L" ] && echo yes || echo no)"
+: > "$L"
 
 exit $fail

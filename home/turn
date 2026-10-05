@@ -32,7 +32,7 @@ Why the shape:
 - claude is named by its full path in the tenant's home (provision installs it there). PATH holds
   nothing the tenant can write.
 """
-import fcntl, json, os, pwd, subprocess, sys, time
+import fcntl, json, os, pwd, signal, subprocess, sys, time
 from datetime import datetime, timezone
 
 pw = pwd.getpwuid(os.getuid())
@@ -99,13 +99,25 @@ def main():
     t0 = time.time()
     rc, out, err = None, "", None
     try:
-        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
-                           timeout=o["timeout"], cwd=HOME, env=ENV)
-        rc, out = p.returncode, p.stdout
+        # Own session/process group: a timeout kills claude AND what it spawned (node, MCP servers,
+        # tools). Killing only the direct child leaves those running as orphans (Ash measured it).
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, text=True, cwd=HOME, env=ENV,
+                                start_new_session=True)
+        try:
+            out, perr = proc.communicate(timeout=o["timeout"])
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.communicate()
+            raise
+        rc = proc.returncode
         if rc != 0:
-            err = "nonzero exit: " + (p.stderr or p.stdout).strip()[-200:]
+            err = "nonzero exit: " + (perr or out).strip()[-200:]
     except subprocess.TimeoutExpired:
-        rc, err = 124, "timeout after %ss" % o["timeout"]
+        rc, out, err = 124, "", "timeout after %ss" % o["timeout"]
     except OSError as e:
         rc, err = 127, "could not run claude: %s" % e
     t1 = time.time()
@@ -122,13 +134,26 @@ def main():
            "api_duration_ms": res.get("duration_api_ms"), "num_turns": res.get("num_turns"),
            "secs_since_prev_turn": None, "list_cost_usd": res.get("total_cost_usd"),
            "models": models_of(res), "self_reported": True}
-    with open(LEDGER, "ab+") as f:          # fails loudly if the ledger dir is missing: HOME's job
-        fcntl.flock(f, fcntl.LOCK_EX)
-        pe = prev_end(f)
-        if pe is not None:
-            row["secs_since_prev_turn"] = round(t0 - pe, 3)
-        f.seek(0, os.SEEK_END)
-        os.write(f.fileno(), (json.dumps(row, separators=(",", ":")) + "\n").encode())
+    line = (json.dumps(row, separators=(",", ":")) + "\n").encode()
+    # O_NOFOLLOW: a ledger that is a symlink is refused, never followed. No O_CREAT: provision
+    # creates the ledger, so a missing one is a HOME failure to surface, not to paper over.
+    # Either way the turn already happened, so the row goes to stderr and the exit is 75 (loud).
+    try:
+        fd = os.open(LEDGER, os.O_RDWR | os.O_APPEND | os.O_NOFOLLOW)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            with os.fdopen(os.dup(fd), "rb") as f:
+                pe = prev_end(f)
+            if pe is not None:
+                row["secs_since_prev_turn"] = round(t0 - pe, 3)
+                line = (json.dumps(row, separators=(",", ":")) + "\n").encode()
+            if os.write(fd, line) != len(line):
+                raise OSError("short write")
+        finally:
+            os.close(fd)          # releases the lock
+    except OSError as e:
+        sys.stderr.write("turn: LEDGER NOT WRITTEN (%s): %s; row was: %s" % (LEDGER, e, line.decode()))
+        sys.exit(75)
     if res.get("result") is not None:
         sys.stdout.write(str(res["result"]) + "\n")
     elif err:
