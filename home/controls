@@ -182,6 +182,13 @@ cat > /dev/null
 echo '{"result":"HOME-OK"}'
 EOF
 chmod +x "$t/claude"
+# check's model turn runs from the runner's passwd home; with none (e.g. under `unshare -U`, which
+# maps the runner to nobody, home /nonexistent) the turn fails either way, so the control can't
+# tell a fix from no fix. Same treatment as 12: SKIP is a failure, never a pass.
+rh=$(getent passwd "$(id -un)" | cut -d: -f6)
+if [ ! -d "$rh" ]; then
+  echo "SKIP 16: runner $(id -un) has no home directory ($rh), so the model path can't run here"; fail=1
+else
 sed "s#^CLAUDE=.*#CLAUDE=$t/claude#" "$t/check" > "$t/mc"; chmod +x "$t/mc"
 grep -q "^CLAUDE=$t/claude" "$t/mc" || { echo "FAIL could not retarget CLAUDE"; fail=1; }
 cp "$here/inventory" "$t/inventory"; "$t/mc" > "$t/out" 2>&1
@@ -191,5 +198,6 @@ for i in $after; do grep -qE "^[A-Z]+ +$i " "$t/out" || missing="$missing $i"; d
 expect "model path: oauth GREEN via stub, and every later item ($after) still evaluated" \
   $(grep -q '^GREEN  oauth ' "$t/out" && [ -n "$after" ] && [ -z "$missing" ] && ! grep -q 'required as' "$t/out"; echo $?) \
   "missing:$missing; $(grep -E 'oauth|required as' "$t/out" | tr '\n' ' ')"
+fi
 
 exit $fail
