@@ -155,5 +155,13 @@ grep -qx -- --resume "$T/claude-args" && grep -qx sess-123 "$T/claude-args" && [
   && ok "--resume passed to claude and recorded; api_duration_ms and usage_scope kept" \
   || bad "resume" "args=$(tr '\n' ' ' < "$T/claude-args") row=$(field 'r[0]')"
 
+fresh; run "$ARGSPY" --trigger t "p" >/dev/null 2>&1
+[ "$(grep -A1 -x -- --model "$T/claude-args" | tail -1)" = claude-sonnet-5-5 ] && [ "$(field 'r[0]["model_requested"]')" = '"claude-sonnet-5-5"' ] \
+  && ok "no --model: claude gets --model claude-sonnet-5-5 and the row records it" \
+  || bad "default model" "args=$(tr '\n' ' ' < "$T/claude-args") row=$(field 'r[0]["model_requested"]')"
+fresh; run "$ARGSPY" --model m-x --trigger t "p" >/dev/null 2>&1
+[ "$(grep -A1 -x -- --model "$T/claude-args" | tail -1)" = m-x ] && [ "$(grep -c -x -- --model "$T/claude-args")" = 1 ] \
+  && ok "--model overrides the default, passed once" || bad "model override" "args=$(tr '\n' ' ' < "$T/claude-args")"
+
 echo "$pass ok, $fail failed"
 [ $fail = 0 ]

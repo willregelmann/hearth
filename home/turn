@@ -53,6 +53,9 @@ ENV = {"HOME": _pw.pw_dir, "USER": _pw.pw_name, "LOGNAME": _pw.pw_name,
        "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 
 SCHEMA = 1
+# Will 2026-10-05: tenant turns run on Sonnet unless the caller names a model. An unpinned turn took
+# Claude Code's default (Opus) on Buster's first turn.
+DEFAULT_MODEL = "claude-sonnet-5-5"
 EX_TIMEOUT, EX_DATAERR, EX_TEMPFAIL = 124, 65, 75
 
 
@@ -115,7 +118,7 @@ def main(argv=None):
     me = pwd.getpwuid(os.getuid())
     ap = argparse.ArgumentParser(prog="turn")
     ap.add_argument("--trigger", required=True, help="why this turn ran: check, cron, will, ...")
-    ap.add_argument("--model")
+    ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--resume", metavar="SESSION_ID")
     ap.add_argument("--timeout", type=float, default=300)
     ap.add_argument("prompt")
