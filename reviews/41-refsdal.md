@@ -7,8 +7,8 @@ noted, [proposal] = mine.
 ## Short answer to §7 q5
 Anderson & Schooler is the right FAMILY: rational analysis, where availability tracks need-odds, a power law in
 recency and frequency. ACT-R's base-level equation is a fine estimator of the RECENCY part of it. But it's the
-wrong place to spend effort. On my one pilot, the base-level equation adds almost nothing over plain recency, and
-the large factors it leaves out are (a) what KIND of unit it is, (b) the current TASK, and (c) what a miss COSTS
+wrong place to spend effort. On my one pilot, the base-level equation adds little over plain recency (0.004 AUC
+at a 20-message horizon, 0.036 at ~one compaction interval; see REV 2), and the large factors it leaves out are (a) what KIND of unit it is, (b) the current TASK, and (c) what a miss COSTS
 versus what keeping the unit costs. The better-founded framing is a cache-replacement decision with a need
 probability inside it, not a memory-strength prior alone.
 
@@ -30,17 +30,19 @@ summariser's own doing. That's a feedback loop (attack 5).
 
 ## Attacks on §3 (and what I'd change)
 1. **Score is not the decision.** Eviction should minimise expected cost: evict the unit with the lowest
-   P(need within horizon) × cost(miss) / size. That is GreedyDual-Size (Cao & Irani, USITS 1997 [literature,
-   paper read]): H = cost/size on access, the inflation offset L ages everything, provably k-competitive. Size
+   P(need within horizon) × cost(miss) / size: a value-per-byte rule in the GreedyDual family (Cao & Irani, USITS
+   1997 [literature, paper read]; GD-Size proper uses H = L + cost/size with no P, and its k-competitive guarantee
+   does NOT transfer to the P-weighted rule; REV 2). Size
    matters enormously here: a 6k-token tool dump and a one-line decision with equal P should NOT have the same
    fate. Cost matters too: re-reading a file is cheap; re-asking Will isn't. ACT-R and A&S supply only the P.
-2. **There is an exact offline benchmark, which is rare and you should use it.** Belady's MIN (evict the unit used
+2. **There is an offline reference to use (a bound, not an exact benchmark; see REV 2).** Belady's MIN (evict the unit used
    furthest in the future) is optimal and needs the future. A replayed transcript IS the future. So every policy
    (Claude Code's recency summary, ACT-R, GD-Size, Jev, an open head) can be scored against MIN on Buster's own
    transcripts before anything ships, with the gap to MIN in fetch-backs per token. That turns M5's "decide on the
    number" into a number available at M2, not after months of M4 logging.
 3. **Factor the prior; don't replace it.** Anderson's own model splits need-odds into a history term
-   (base-level) times a context likelihood ratio (spreading activation). Jev, or an open head, is the context
+   (base-level) times a context likelihood ratio (spreading activation) [literature, Anderson 1990, from memory,
+   not re-read]. Jev, or an open head, is the context
    term: "given this task, how much more likely?". Use it multiplicatively on a per-kind base-level prior rather
    than asking it for the whole probability. That's cheaper (the base-level part needs no model call), more
    inspectable, and it degrades gracefully when the scorer is down.
@@ -82,3 +84,31 @@ summariser's own doing. That's a feedback loop (attack 5).
 Strong proposal, and I'd keep its order (M0 → M5). Change §3.2 step 2's "ACT-R activation" to "per-kind base-level
 prior × task-context factor", step 3 to "evict by GD-Size value", and add the Belady replay as the benchmark from
 M2 on. The §7 q5 answer is above.
+
+## REV 2 (after Ash's attack, same day; pilot re-run by me)
+Ash re-ran the pilot (it reproduced) and made three points. All three are right, and the first changes my headline numbers.
+(A) The horizon. "Need" was "re-mentioned within W = 20 messages", but an eviction must hold until the next
+compaction. In this session that's ~525–584 messages apart (summary messages at 489, 1073, 1632, 2157, 2738).
+I re-ran with only W changed, on the same 3,047 messages (`memory-prior-pilot-W.py` + `.out`):
+
+| W | power R² | exp R² | slope | AUC recency | AUC ACT-R | gain |
+|---|---|---|---|---|---|---|
+| 20 | 0.958 | 0.631 | −0.84 | 0.865 | 0.869 | 0.004 |
+| 200 | 0.837 | 0.832 | −0.63 | 0.831 | 0.846 | 0.015 |
+| 600 (~1 compaction) | 0.881 | 0.753 | −0.63 | 0.827 | 0.863 | 0.036 |
+
+By kind at W = 600, the exponential fits shas better (0.93 vs 0.75), and ACT-R's gain over recency is 0.067 for shas.
+So: P1 (power law) is a W = 20 result, not established at the eviction horizon. P3 is reversed at that horizon:
+frequency is worth something (0.036 overall), though still smaller than the kind effect. P4 (kind matters) holds
+at every W. The cliff between age ~362 and ~724 at W ≥ 200 sits right at the compaction interval. That's
+consistent with Ash's reading, the feedback loop of attack 5 showing up in the data: items not carried across a
+compaction stop being mentioned. My data can't separate "not needed" from "no longer visible", which is the
+strongest argument for the offline replay over learning from in-session reuse.
+(B) Belady is not exact here, for two reasons. The request sequence isn't exogenous: the transcript was produced
+under the current memory, so a replay scores policies against a future that a different policy wouldn't have
+produced (my own attack 5, applied to my own attack 2). And MIN is optimal only for unit sizes and unit costs.
+With variable sizes and costs the offline optimum is hard, and the right reference is a bound (Ash names
+Berger, Beckmann & Harchol-Balter's FOO/PFOO, SIGMETRICS 2018, from his memory; I haven't read it). Attack 2 now
+reads: a bound computable at M2, read as optimistic for the reason above, not an exact benchmark.
+(C) GD-Size proper has no P(need). My P-weighted rule is a value-per-byte knapsack (closer to GDSF). I keep the
+rule and drop the borrowed k-competitive guarantee; attack 1 is amended above.
