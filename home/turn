@@ -162,7 +162,10 @@ def main(argv=None):
                 raise ValueError("not an object")
         except ValueError:
             d = None
-            row["error"] = "unparseable output: " + (p.stdout or p.stderr)[-300:].decode(errors="replace")
+            # never the bytes themselves: they can be reply text or an echoed prompt, and the ledger is 644
+            which, raw = ("stdout", p.stdout) if p.stdout else ("stderr", p.stderr or b"")
+            row["error"] = (f"unparseable output: {which} {len(raw)} bytes, "
+                            f"sha256 {hashlib.sha256(raw).hexdigest()}")
             status = p.returncode or EX_DATAERR
         if d is not None:
             result = d.get("result")

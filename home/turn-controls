@@ -51,6 +51,17 @@ for c in "nonzero:echo boom >&2; exit 3:3" "garbage:echo not-json:65" \
   [ $rc = "$want" ] && [ "$(rows)" = 1 ] && [ "$err" != null ] && ok "failed turn ($name): rc $want and a row with an error" \
     || bad "failed turn ($name)" "rc=$rc want=$want rows=$(rows) error=$err"
 done
+# no claude output text reaches the 644 ledger on ANY path: unparseable stdout, an empty stdout with
+# text on stderr, and valid JSON that isn't an object all carry the canary; the raw file must not.
+for c in "stdout:echo CANARY-\$\$-out" "stderr:echo CANARY-\$\$-err >&2; exit 4" "array:echo '[\"CANARY-'\$\$'-arr\"]'"; do
+  name=${c%%:*}; body=${c#*:}; fresh; cl=$(stub "canary_$name" "$body")
+  run "$cl" --trigger t "p" >/dev/null 2>&1; rc=$?
+  err=$(field 'r[0]["error"] if r else None')
+  if grep -q CANARY "$L"; then bad "no output text in the ledger ($name)" "canary found: $(grep -o 'CANARY[^\"]*' "$L" | head -1)"
+  elif [ "$(rows)" != 1 ] || ! printf '%s' "$err" | grep -Eq '^"unparseable output: (stdout|stderr) [0-9]+ bytes, sha256 [0-9a-f]{64}"$'; then
+    bad "no output text in the ledger ($name)" "rc=$rc rows=$(rows) error=$err"
+  else ok "no output text in the ledger ($name): length and sha256 only"; fi
+done
 fresh; SLOW=$(stub slow "sleep 30; echo '$J'")
 run "$SLOW" --timeout 1 --trigger t "p" >/dev/null 2>&1; rc=$?
 [ $rc = 124 ] && [ "$(rows)" = 1 ] && [ "$(field 'r[0]["error"].startswith("timeout")')" = true ] \
