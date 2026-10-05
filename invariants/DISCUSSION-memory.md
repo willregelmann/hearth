@@ -324,8 +324,11 @@ actually cited in the reply.
      dominant failure. Better ranking makes it *worse*, and the fix is §4.2, not M6.
      Step (a)'s decision rule is **pre-registered before labelling** (Refsdal): with k
      ranked-out misses, a replay can't resolve a recall gain below ~1/√k (k=10 gives
-     ~0.3). So the minimum k and the gain that would justify building are fixed in the
-     labelling README before any row is read.
+     ~0.3). (Refinement: the SE is √(p(1−p)/k), so 1/√k is ~2σ only at p = ½, the worst
+     case.) So three things are fixed in the labelling README before any row is read: the
+     baseline recall on the R rows (expected near 0, re-run before any candidate), the
+     minimum k (10), and the gain bar. Near p = 0 the decision is an exact paired test
+     (McNemar), not the normal approximation.
      (b) keep the week-4 replay as an **evaluation** of today's retriever plus associations,
      read as an **optimistic bound**: it sees only queries that were actually issued, so it
      flatters every candidate (Refsdal, REV 2 (B));
