@@ -212,7 +212,7 @@ cp "$here/inventory" "$t/inventory"
 memreset() { chmod -R u+rwx "$m" 2>/dev/null; rm -rf "$m"; mkdir -p "$m/.claude/projects/-home-x"; }
 memrun() { "$t/memc" --no-model > "$t/out" 2>&1; }
 memred() { # name: expect memory RED (present, or couldn't look) in the current scratch home
-  memrun; expect "memory: $1 is RED" $(grep -qE '^RED    memory .*(memory present|couldn.t look|can.t read)' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+  memrun; expect "memory: $1 is RED" $(grep -qE '^RED    memory .*(memory present|couldn.t look|can.t read|can.t rule out)' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
 }
 memreset; memrun
 expect "memory: empty scratch home is ABSENT" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
@@ -234,6 +234,12 @@ memreset; mkdir -p "$m/.claude/projects/-home-x/memory"; echo "hidden" > "$m/.cl
 chmod 000 "$m/.claude/projects/-home-x/memory"; memred "P3, a mode-000 memory/ with a file inside"
 fi
 memreset; echo '{"autoMemoryDirectory": "~/elsewhere"}' > "$m/.claude/settings.json"; memred "a relocated auto-memory dir (autoMemoryDirectory)"
+# the same key spelled with a JSON \u escape: parses to autoMemoryDirectory, invisible to a byte grep
+memreset; printf '%s\n' '{"autoMemory\u0044irectory": "/tmp/x"}' > "$m/.claude/settings.json"; memred "an escaped autoMemoryDirectory key"
+memreset; echo '{"env": {"x": {"claudeMd": "remember"}}}' > "$m/.claude/settings.local.json"; memred "a nested claudeMd key"
+memreset; echo '{"autoMemoryEnabled": false, // not json' > "$m/.claude/settings.json"; memred "an unparseable settings.json"
+memreset; echo '{"autoMemoryEnabled": false, "env": {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}}' > "$m/.claude/settings.json"; memrun
+expect "memory: provision's settings.json alone is still ABSENT" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
 memreset; sed 's/| no_memory$/| declared_absent/' "$here/inventory" > "$t/inventory"; memrun
 expect "memory: declared_absent in place of no_memory is RED as required" \
   $(grep -q '^RED    memory .*required as memory:no_memory' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"

@@ -161,7 +161,31 @@ c_no_memory() {
   for s in "$CLAUDE_HOME/settings.json" "$CLAUDE_HOME/settings.local.json" /etc/claude-code/managed-settings.json; do
     { [ -e "$s" ] || [ -L "$s" ]; } || continue
     [ -r "$s" ] || { echo "can't read $s, so can't rule out memory settings in it"; return 1; }
-    grep -qE '"(autoMemoryDirectory|claudeMd)"' "$s" && found="$found $s(autoMemoryDirectory/claudeMd)"
+    # Parsed, not grepped: the tenant writes this file, and JSON lets a key be spelled with \u escapes
+    # that a byte grep can't see (Ash's {"autoMemory\u0044irectory": ...} on #42). Keys are looked for
+    # at any depth; anything that doesn't parse as JSON is RED, never "nothing found".
+    k=$(/usr/bin/python3 -I -c '
+import json, sys
+def keys(o):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            yield k
+            yield from keys(v)
+    elif isinstance(o, list):
+        for v in o:
+            yield from keys(v)
+try:
+    with open(sys.argv[1], "rb") as f:
+        d = json.load(f)
+except Exception as e:
+    print("unparseable: %s" % type(e).__name__); sys.exit(2)
+hit = sorted({k for k in keys(d) if k in ("autoMemoryDirectory", "claudeMd")})
+print(" ".join(hit)); sys.exit(1 if hit else 0)' "$s" 2>&1); krc=$?
+    case $krc in
+      0) ;;
+      1) found="$found $s($k)";;
+      *) echo "can't rule out memory settings in $s: $k"; return 1;;
+    esac
   done
   # Directories: -L follows links at every level (a linked memory/ or a linked MEMORY.md), and any
   # find error (a mode-000 dir, a loop) is RED. stderr is kept, never discarded.
