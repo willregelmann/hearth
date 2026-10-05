@@ -200,4 +200,59 @@ expect "model path: oauth GREEN via stub, and every later item ($after) still ev
   "missing:$missing; $(grep -E 'oauth|required as' "$t/out" | tr '\n' ' ')"
 fi
 
+# 17. memory declared absent is tested, not taken on trust. Buster's first turn left Claude Code
+# auto-memory files while check printed "declared absent". check is pointed at a scratch home
+# (MEM_HOME): empty must be ABSENT; each way of holding memory must be RED, including the ways a
+# tenant could hide it from a naive find (Ash's P1-P3 on #42); and an inventory that swaps
+# no_memory back to declared_absent must be caught as required.
+m=$t/mem; mkdir -p "$m"
+sed -e "s#^MEM_HOME=.*#MEM_HOME=$m; CLAUDE_HOME=$m/.claude#" "$t/check" > "$t/memc"; chmod +x "$t/memc"
+grep -q "^MEM_HOME=$m; " "$t/memc" || { echo "FAIL could not retarget MEM_HOME"; fail=1; }
+cp "$here/inventory" "$t/inventory"
+memreset() { chmod -R u+rwx "$m" 2>/dev/null; rm -rf "$m"; mkdir -p "$m/.claude/projects/-home-x"; }
+memrun() { "$t/memc" --no-model > "$t/out" 2>&1; }
+memred() { # name: expect memory RED (present, or couldn't look) in the current scratch home
+  memrun; expect "memory: $1 is RED" $(grep -qE '^RED    memory .*(memory present|couldn.t look|can.t read|can.t rule out)' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+}
+memreset; memrun
+expect "memory: empty scratch home is ABSENT" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+memreset; mkdir -p "$m/.claude/projects/-home-x/memory"; echo "user prefers tabs" > "$m/.claude/projects/-home-x/memory/MEMORY.md"
+memred "an auto-memory file"
+memreset; echo "remember this" > "$m/CLAUDE.md"; memred "a home CLAUDE.md"
+memreset; echo "remember this" > "$m/CLAUDE.local.md"; memred "a home CLAUDE.local.md"
+memreset; mkdir -p "$m/.claude/rules"; echo "always x" > "$m/.claude/rules/r.md"; memred "a user rule in ~/.claude/rules"
+memreset; mkdir -p "$m/elsewhere"; echo "hidden" > "$m/elsewhere/MEMORY.md"
+ln -s "$m/elsewhere" "$m/.claude/projects/-home-x/memory"; memred "P1, memory/ as a symlink to a dir with a file"
+memreset; mkdir -p "$m/.claude/projects/-home-x/memory"; echo "hidden" > "$m/notes"
+ln -s "$m/notes" "$m/.claude/projects/-home-x/memory/MEMORY.md"; memred "P2, MEMORY.md as a symlink"
+# a link to nothing yet: the tenant can create the target during its own turn, after check has run
+memreset; mkdir -p "$m/.claude/projects/-home-x/memory"
+ln -s "$m/later" "$m/.claude/projects/-home-x/memory/MEMORY.md"; memred "a dangling MEMORY.md link"
+if [ "$(id -u)" = 0 ]; then echo "SKIP memory P3: root reads a mode-000 dir, so it can't be tested as root"; fail=1
+else
+memreset; mkdir -p "$m/.claude/projects/-home-x/memory"; echo "hidden" > "$m/.claude/projects/-home-x/memory/MEMORY.md"
+chmod 000 "$m/.claude/projects/-home-x/memory"; memred "P3, a mode-000 memory/ with a file inside"
+fi
+memreset; echo '{"autoMemoryDirectory": "~/elsewhere"}' > "$m/.claude/settings.json"; memred "a relocated auto-memory dir (autoMemoryDirectory)"
+# the same key spelled with a JSON \u escape: parses to autoMemoryDirectory, invisible to a byte grep
+memreset; printf '%s\n' '{"autoMemory\u0044irectory": "/tmp/x"}' > "$m/.claude/settings.json"; memred "an escaped autoMemoryDirectory key"
+memreset; echo '{"env": {"x": {"claudeMd": "remember"}}}' > "$m/.claude/settings.local.json"; memred "a nested claudeMd key"
+memreset; echo '{"autoMemoryEnabled": false, // not json' > "$m/.claude/settings.json"; memred "an unparseable settings.json"
+# a FIFO for settings.json: open() would block and check would never return. Under a timeout, so a
+# regression shows as a FAIL here, not a hung controls run.
+memreset; mkfifo "$m/.claude/settings.json"
+timeout 20 "$t/memc" --no-model > "$t/out" 2>&1; frc=$?
+expect "memory: a FIFO settings.json is RED and check returns" \
+  $([ $frc != 124 ] && grep -qE '^RED    memory .*not a regular file' "$t/out"; echo $?) "rc=$frc $(grep ' memory ' "$t/out")"
+# a sparse 2 MiB settings.json: costs the tenant no disk, but an unbounded read costs the judge RAM
+memreset; truncate -s 2M "$m/.claude/settings.json"; memrun
+expect "memory: an oversized (sparse) settings.json is RED as too large" \
+  $(grep -qE '^RED    memory .*too large' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+memreset; echo '{"autoMemoryEnabled": false, "env": {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}}' > "$m/.claude/settings.json"; memrun
+expect "memory: provision's settings.json alone is still ABSENT" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+memreset; sed 's/| no_memory$/| declared_absent/' "$here/inventory" > "$t/inventory"; memrun
+expect "memory: declared_absent in place of no_memory is RED as required" \
+  $(grep -q '^RED    memory .*required as memory:no_memory' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+cp "$here/inventory" "$t/inventory"; memreset
+
 exit $fail
