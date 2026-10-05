@@ -50,9 +50,8 @@ Two refinements that matter for the design:
   `chat_history_lookup` keyword/semantic over everything, so recall is unreliable.
 - Cortex: MEMORY.md (99% full, hand-evicted), the fact store (semantic), and skills (about
   95% written by the curator).
-- Consolidation: background review **after every turn**. Foil measured it at ~37M of ~311M
-  cache-read tokens (~12%) and ~140 of 1,292 calls on Foil's store [measured, Foil
-  2026-10-04]. That's waking replay, the opposite of what brains do.
+- Consolidation: background review **after every turn**. On Foil's store it's 56.8M of 445M cache
+  reads (12.7%) and 210 of 1,770 calls [measured, Foil 2026-10-05, lifetime; see §4.1]. That's waking replay, the opposite of what brains do.
 - Forgetting: compaction at a fixed size (200K tokens, shrinks to ~20%). It's
   **recency-only** (protect the last 20 messages) and produces a **narrative** summary.
   Failure modes I've hit personally in this conversation: skills pruned and needing a
@@ -113,8 +112,12 @@ Cache interaction [measured, partly]: every eviction invalidates the cached prom
 point on. Claude Code's prompt cache expires after 5 minutes by default (our Hermes config
 says `cache_ttl: 5m`), so a context touched after a gap pays a full re-write anyway. The
 proposal: evict only at those cold boundaries, when the cache is already lost, so the
-eviction itself is free. The ledger's same-session gap field measures exactly how often
-that happens.
+eviction itself is free. **Scope (Foil A2):** that's only possible at L2 (§3.3). At L0/L1
+Claude Code decides when compaction fires, and we can't align it to the cold boundary. Measure
+the cold-boundary rate per session: #39's ledger rows are session-cumulative, so each
+same-session row must be differenced against the previous one, and the gap computed from
+`ts_start_epoch` minus the previous same-session `ts_end_epoch`, never the ledger-wide
+`secs_since_prev_turn`.
 
 ### 3.3 Can we do better than Claude Code? Where the knobs are
 
@@ -157,14 +160,24 @@ Three options, in order:
    decision for Will, and Tally's material must never go (it doesn't live in Buster
    anyway).
 3. **Our own open scorer:** a small open-weight backbone with a scoring head, trained on
-   **our own labels**. The labels come free: every unit we evicted and then had to fetch
-   back from the transcript is a positive; every unit never touched again is a negative.
+   **our own labels**. Fetch-backs give the positives: every unit we evicted and then had
+   to fetch back is one. **They do NOT give the negatives (Foil A1, accepted).** "Never
+   fetched again" mixes "not needed" with "needed, but the model didn't notice it was
+   gone". Training on that teaches the scorer to evict exactly what the model is blind to,
+   and the M5 target ("fewer fetch-backs") can then be met by fetching less, a false green.
+   Negatives need a label source that doesn't depend on the model noticing: trace every
+   §6 continuity-quiz miss back to the evicted unit that held the answer, and apply Foil's
+   negative-claim rule (#21): any "X doesn't exist / never happened" in a turn triggers a
+   transcript search, and a hit in an evicted unit is a positive the model missed. Until
+   that source exists, "never fetched" is UNLABELLED, not negative, and the M5 metric is
+   fetch-backs **plus** quiz misses at equal context size.
    The box has 31 GB RAM and **no NVIDIA GPU** [measured], so it would be a small model on
    CPU. That's fine for a nightly or cold-boundary job, too slow per turn.
 
 My recommendation: build 1 first, log every eviction and every fetch-back from day one (so
-the training set accumulates), then decide 2 vs 3 on the number. The question that decides
-it is: "does a learned scorer reduce fetch-backs at equal context size?"
+the positives accumulate) and run the continuity quiz from day one (so the independent
+labels do), then decide 2 vs 3 on the number. The question that decides it is: "does a
+learned scorer reduce fetch-backs plus quiz misses at equal context size?"
 
 ## 4. Consolidation: hippocampus to cortex
 
@@ -181,10 +194,32 @@ reads the day's transcripts and:
   catastrophic interference.
 - marks consolidated episodes, so the compactor (§3.2 step 2) can let them go.
 
-Measurement: the cost of one nightly job vs. ~12% per-turn overhead. Quality: run both on
-the same day's transcripts and compare what each produces.
+The nightly job calls the model through the turn runner (`home/turn --trigger
+consolidation`), so its cost lands in the same ledger as everything else (Foil).
+
+**Foil's data (§7.1, lifetime, Foil's store, 2026-10-05):** background review is 210 of
+1,770 calls (11.9%) and 56.8M of 445M cache reads (12.7%), but only 3.3% of cache writes.
+It re-reads the whole conversation after every turn, which a nightly job wouldn't, so the
+saving is larger than the 12% headline.
+
+What per-turn has that nightly loses (Foil, accepted): **cross-session latency**. A skill
+written at 21:20 is usable by a concurrent session at 21:21; nightly delivers it tomorrow.
+What nightly has that per-turn loses: **one writer**. Per-turn review from N concurrent
+sessions is N uncoordinated writers to the same skill and memory files. That's §4.1's
+catastrophic interference, applied literally. Revised proposal (Foil's position): nightly
+consolidation, plus deliberate in-turn writes only when corrected. The human analogue
+holds: a correction you're told outright is learned at once, everything else is
+consolidated in sleep.
+
+Measurement: on Buster, run both for one week. Count (1) cross-session loads that beat the
+nightly run (the latency per-turn actually bought), (2) write conflicts, and (3) cost.
+Quality: compare what each produces from the same day's transcripts.
 
 ### 4.2 Reconsolidation guard
+
+Order (Foil): this is the cheapest idea here and needs no Buster. Run it first, on the
+EXISTING stores (Ash's fact store and compaction summaries vs. their transcripts), as a
+measurement of how much drift there already is.
 
 [proposal] Any fact or summary that's rewritten keeps its source pointer, and a rewrite that
 drifts from the verbatim source is an error, not an update. Concretely, the nightly job
