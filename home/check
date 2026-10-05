@@ -248,8 +248,10 @@ c_loan_reach() {
     [ $rc = 0 ] || { echo "couldn't look in $d (find rc $rc): $(echo "$out" | head -n 3 | tr '\n' ' ')"; return 1; }
     while IFS= read -r f; do
       [ -n "$f" ] || continue
-      # tenant-written text goes to the reader's terminal: keep it to name characters
-      n=$(head -c 4096 "$f" 2>/dev/null | grep -m1 -E '^name:' | cut -d: -f2- | tr -cd 'A-Za-z0-9._-')
+      # tenant-written text goes to the reader's terminal: keep it to name characters. Opened
+      # non-blocking (Ash on #47): a FIFO here would block open() and check would never return, as
+      # on #42. A FIFO, device or directory just reads as no name, "?".
+      n=$(dd if="$f" bs=4096 count=1 iflag=nonblock status=none 2>/dev/null | grep -m1 -E '^name:' | cut -d: -f2- | tr -cd 'A-Za-z0-9._-')
       names="$names ${n:-?}"
     done <<< "$out"
   fi

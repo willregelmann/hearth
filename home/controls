@@ -271,6 +271,11 @@ else
 memreset; mkdir -p "$m/.claude/skills/synced/0b1c"; chmod 000 "$m/.claude/skills/synced"; l=$(loanrun)
 expect "loan: a synced dir check can't read is RED" $(echo "$l" | grep -q '^RED    loan_reach .*couldn.t look'; echo $?) "$l"
 fi
+# a FIFO SKILL.md (Ash on #47): opening it would block, so check must still return. Under a timeout.
+memreset; mkdir -p "$m/.claude/skills/synced/b"; mkfifo "$m/.claude/skills/synced/b/SKILL.md"
+timeout 20 "$t/memc" --no-model > "$t/out" 2>&1; frc=$?; l=$(grep ' loan_reach ' "$t/out")
+expect "loan: a FIFO SKILL.md reads as '?' and check returns" \
+  $([ $frc != 124 ] && echo "$l" | grep -qF 'skills synced: 1 [?]'; echo $?) "rc=$frc $l"
 memreset; grep -v '^loan_reach ' "$here/inventory" > "$t/inventory"; l=$(loanrun)
 expect "loan: dropping the line is RED as required" $(echo "$l" | grep -q 'required as loan_reach:loan_reach'; echo $?) "$l"
 cp "$here/inventory" "$t/inventory"; memreset
