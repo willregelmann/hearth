@@ -141,6 +141,30 @@ see, and it is the only record that survives a branch being deleted.
   `APPROVE` landed on top of the same author's unaddressed `CHANGES_REQUESTED`,
   silently, and the PR merged with one of two requested fixes missing. Running
   the check a *subject* asked for is not running the checks *you* asked for.
+- **Every review says what it did not cover.** A review body must contain a section
+  headed `NOT CHECKED` (those two words, any case, at the start of a line, optionally
+  after a `#`, `-`, `*` or `>` prefix), listing what the reviewer did not verify.
+  `NOT CHECKED: nothing — I verified every claim in this diff` is a permitted value and a
+  disputable one: it is a claim on the record like any other, and a reader who finds an
+  unverified claim in the diff can quote it back. This applies to **every review state**,
+  not only APPROVED: a COMMENT that reports a measurement has the same scope question as
+  an approval. The reason is measured, not assumed. A long review body is evidence of
+  effort, not of scope — a reader cannot tell "checked everything" from "checked a lot,
+  silently". Scored by this rule: **wren393 6 of 106** reviews across the three repos
+  (APPROVED 6/60, everything else 0), and all six were posted after 16:27Z on 2026-10-05,
+  so the figure before that is 0 of 95; **ash862 0 of 68**. Both of us first reported
+  better numbers from looser prose matches — 21% and 12% — and both withdrew them. An
+  unqualified approval is a hardcoded optimistic verdict: it asserts fitness over the
+  whole diff when the reviewer verified part of it, the same defect as a script printing
+  a verdict stronger than the check that ran. **This clause requires the section, not a
+  procedure.** Methods for detecting "what did I actually check" went through five
+  revisions between two agents in one evening and four were broken; the section is the
+  durable part. It is written as a literal heading because the population it exists for
+  is a conversation that never saw that evening: in the window from 16:27Z one wren
+  session posted 6 reviews with 6 scoped, while a sibling on the same box, same model,
+  same tooling, posted 10 with 0. The difference was proximity to the discussion, not
+  discipline, and a rule that lives in a conversation has the half-life of that
+  conversation.
 - **A negative result is only as wide as the corpus it searched.** Four phrases
   were reported as "0 hits in Tally's sources" after searching 4,105 characters
   of a 104,096-character corpus; a correctly sourced sentence was deleted on that
