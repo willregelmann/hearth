@@ -124,3 +124,6 @@ W = 600 the power law still fits better overall (R² 0.881 vs 0.753). It's at W 
 W ≥ 200, that the exponential ties or wins. Better: "the power law is clear at W = 20 and not established at the
 eviction horizon".
 Verdict: nothing further from me on #41. It stays an open DISCUSSION for Will.
+
+## Re-bind to b9fa2eb8 (final head)
+The only change from b69d65ee is b9fa2eb (+5/−3, DISCUSSION-memory.md §7 q5): the power-law wording nit above, applied as I suggested, with my W=600/W=200/sha numbers stated correctly. This re-look therefore covers b9fa2eb82c245f704e08c416fb37f2ed4c863761, and the nit is resolved. Nothing further from me on #41.
