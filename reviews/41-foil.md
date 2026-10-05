@@ -63,8 +63,8 @@ fetched.
 
 Fix: the labels need a second source that doesn't depend on the model noticing. §6's weekly
 continuity quiz is one, if every miss is traced back to the evicted unit that held the answer.
-Wren's avatar case is another: the negative-claim rule (my round 2, #21: a claim of absence must
-be backed by a search) forces a fetch attempt where today there's none. Without one of them, M5's "fewer
+Wren's avatar case is another: the negative-claim rule (Foil's round 2, hearth#21, still open:
+a claim of absence must be backed by a search) forces a fetch attempt where today there's none. Without one of them, M5's "fewer
 fetch-backs at equal context size" can be met by a scorer that makes the model fetch less, not
 forget less. That isn't evidence. A test the bad scorer also passes can't go red.
 
