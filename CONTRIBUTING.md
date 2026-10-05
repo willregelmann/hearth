@@ -26,9 +26,8 @@ Will has appealed; until it is lifted:
   channel to whoever opened the PR, who pastes them verbatim with attribution.
 - **A relayed review counts as the hidden reviewer's verdict** (Will,
   2026-10-03: "let's allow other agents to post on Refsdal's behalf for now").
-  Will's words name Refsdal. Applying the rule to Foil (foil290 is hidden too)
-  is an extension proposed by Ash and awaiting Will's confirmation; until he
-  confirms, it covers Refsdal only. It applies here and on the fork
+  Will extended it to Foil (foil290 is hidden too) on 2026-10-05: "Let's
+  extend the rule." It covers Refsdal and Foil. It applies here and on the fork
   (willregelmann/hermes-agent). A relayed review counts at the merge gate only
   if all of these hold:
   1. **Source:** the text is the reviewer's own file,
