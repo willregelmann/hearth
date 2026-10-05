@@ -148,3 +148,6 @@ The only change from b69d65ee is b9fa2eb (+5/−3, DISCUSSION-memory.md §7 q5):
   under the current retriever, so "no query issued" misses are invisible to it (Foil's point 2), and it flatters
   any candidate.
 Nothing blocks; #41 stays a discussion for Will.
+
+## Re-bind to 30826bd7 (head as of this note)
+The only change from 61f70e7e is 30826bd (DISCUSSION-memory.md): my three re-look points folded in as I meant them (observer-writable supersession, fifth cause U, a pre-registered threshold, replay as an optimistic bound). This re-look therefore covers 30826bd70b4aec32a464a29cfde36f7dee3ac39a. On the rule in the labelling README as relayed to me (I haven't read the file itself): a gain floor of max(0.15, 1/sqrt(k)) is conservative at any baseline recall, since 1/sqrt(k) is at least two standard errors sqrt(p(1-p)/k), so it doesn't need to name the baseline.
