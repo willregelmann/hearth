@@ -60,8 +60,14 @@ ENV = {"HOME": _pw.pw_dir, "USER": _pw.pw_name, "LOGNAME": _pw.pw_name,
 # Skills and plugins sync have no env switch. --settings sits above every tenant-owned settings file
 # (below managed only), and a false there is honoured for both sync keys; a true for
 # disableClaudeAiConnectors is honoured from any scope. So the tenant can't turn these back on.
+# A tenant settings.json "env" block OVERWRITES the process env (measured on 2.1.289: a settings
+# env value replaced the process value, and a --settings env value replaced the settings one), so
+# {"env": {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "0"}} there would undo ENV above and force memory ON.
+# The memory switch and the env pair therefore ride in --settings too (Foil on #48).
 LOAN_OFF = json.dumps({"disableClaudeAiConnectors": True, "syncClaudeAiSkills": False,
-                       "syncClaudeAiPlugins": False}, sort_keys=True)
+                       "syncClaudeAiPlugins": False, "autoMemoryEnabled": False,
+                       "env": {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+                               "ENABLE_CLAUDEAI_MCP_SERVERS": "false"}}, sort_keys=True)
 
 SCHEMA = 1
 # Will 2026-10-05: tenant turns run on Sonnet unless the caller names a model. An unpinned turn took

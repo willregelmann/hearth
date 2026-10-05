@@ -172,6 +172,12 @@ s=$(grep -A1 -x -- --settings "$T/claude-args" | tail -1)
 import json,sys; d=json.loads(sys.argv[1])
 assert d.get("disableClaudeAiConnectors") is True and d.get("syncClaudeAiSkills") is False and d.get("syncClaudeAiPlugins") is False, d' "$s" 2>/dev/null \
   && ok "claude gets --settings: connectors off, skills and plugins sync off" || bad "loan settings" "settings=[$s]"
+# a tenant settings.json env block overwrites the process env, so the memory/connector switches
+# must also be in --settings, which outranks it
+python3 -c '
+import json,sys; d=json.loads(sys.argv[1]); e=d.get("env") or {}
+assert d.get("autoMemoryEnabled") is False and e.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1" and e.get("ENABLE_CLAUDEAI_MCP_SERVERS") == "false", d' "$s" 2>/dev/null \
+  && ok "--settings also pins auto-memory off and the env pair (beats a tenant settings env block)" || bad "loan settings env" "settings=[$s]"
 
 echo "$pass ok, $fail failed"
 [ $fail = 0 ]
