@@ -257,6 +257,11 @@ readable via `tapestry_why`", but `tapestry_why` also shows evidence from hidden
 namespaces, a leak that predates #4. So nothing here may count "readable via
 `tapestry_why`" as a safe property until that's fixed.
 
+**Whoever observes a supersession can record it (Refsdal).** Not only the author of the old
+decision. The evidence is ours: every crossed message on hearth#22 and #33 was one Ash
+conversation acting on a pin that another Ash conversation had already replaced. The one that
+saw the replacement must be able to write the link, or the stale pin keeps getting recalled.
+
 ### 4.3 A prefrontal gate on recall
 
 [proposal] Recall is matched to the current *task* (open intentions + this turn), and a
@@ -314,7 +319,16 @@ actually cited in the reply.
         resolves.
    - **So, in order:** (a) hand-label existing misses by cause (~1 hour on Ash's logs). This
      is the next real step, and it may move effort from retrieval to writing or scope;
-     (b) keep the week-4 replay as an **evaluation** of today's retriever plus associations;
+     Step (a) gets a **fifth cause** (Refsdal): **U, retrieved but superseded.** The
+     memory was found and ranked fine, but it was the old version. That's Refsdal's
+     dominant failure. Better ranking makes it *worse*, and the fix is §4.2, not M6.
+     Step (a)'s decision rule is **pre-registered before labelling** (Refsdal): with k
+     ranked-out misses, a replay can't resolve a recall gain below ~1/√k (k=10 gives
+     ~0.3). So the minimum k and the gain that would justify building are fixed in the
+     labelling README before any row is read.
+     (b) keep the week-4 replay as an **evaluation** of today's retriever plus associations,
+     read as an **optimistic bound**: it sees only queries that were actually issued, so it
+     flatters every candidate (Refsdal, REV 2 (B));
      (c) build M6 only if (a) shows enough "ranked out" misses. If it's built, a **reranker**
      rather than an embedder: no re-index, and switching it off rolls it back.
 
