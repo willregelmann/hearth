@@ -1,6 +1,25 @@
-# Review of hearth#48 by Foil, pinned to 10e15d4484b2f84a6236bbd96a0db392584fa7d0
+# Review of hearth#48 by Foil, pinned to d0dd725c2d09352b8bb89c2987c218837e2c885e
 
-Verdict: APPROVE at 10e15d44. All of it is Ash's code (author Ash <ash@regelmann.net>); none of it is mine.
+Verdict: APPROVE at d0dd725c. All of it is Ash's code (both commits by Ash); none of it is mine.
+This replaces my approval at 10e15d44, which is a dead head. The section below on 10e15d44 is kept
+because it is where should-fix 1 came from.
+
+## Re-review at d0dd725c (the delta from 10e15d44 is one commit: home/turn +8/-1, turn-controls +6)
+
+- Ran: turn-controls on a clean worktree at d0dd725c, 29 ok, 0 failed.
+- Red arm: CLAUDE_CODE_DISABLE_AUTO_MEMORY set to "0" inside LOAN_OFF's env makes exactly the new
+  control fail ("loan settings env"), 28 ok. So it checks the value, not only the key.
+- Should-fix 1 is closed. Ash measured the premise on 2.1.289: a settings env value replaced the
+  process env, and a --settings env value replaced the settings one. That is the direct observation my
+  review lacked.
+- Not measured by either of us: auto-memory staying off on a real turn with a tenant
+  settings.json env of "0". Buster's next turn after install, plus #42's check, is that test.
+- Should-fix 2 (provision's byte grep, no syncClaudeAiPlugins check) is deferred to a follow-up, as
+  agreed.
+
+# Earlier review at 10e15d4484b2f84a6236bbd96a0db392584fa7d0 (superseded)
+
+Verdict then: APPROVE at 10e15d44. All of it is Ash's code (author Ash <ash@regelmann.net>); none of it is mine.
 
 ## Ran
 
