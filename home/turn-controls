@@ -130,9 +130,10 @@ leaked=$(grep -E '^(ANTHROPIC_API_KEY|CLAUDE_CONFIG_DIR|PYTHONPATH|PYTHONSTARTUP
 [ $rc = 0 ] && [ "$out" = TURN-OK ] && [ "$(rows)" = 1 ] && [ -z "$leaked" ] \
   && ok "caller env reaches neither claude nor turn (key, config dir, PYTHONPATH hijack)" \
   || bad "environment" "rc=$rc out=$out rows=$(rows) leaked=[$leaked]"
-want_env="HOME LANG LOGNAME PATH USER"
+want_env="CLAUDE_CODE_DISABLE_AUTO_MEMORY HOME LANG LOGNAME PATH USER"
 got_env=$(grep -v '^_=\|^PWD=\|^SHLVL=' "$T/claude-env" | cut -d= -f1 | sort | tr '\n' ' ' | sed 's/ $//')
 [ "$got_env" = "$want_env" ] && ok "claude's environment is exactly $want_env" || bad "fixed env" "got [$got_env]"
+grep -qx 'CLAUDE_CODE_DISABLE_AUTO_MEMORY=1' "$T/claude-env" && ok "auto-memory is off in claude's env (=1)" || bad "auto-memory off" "$(grep AUTO_MEMORY "$T/claude-env")"
 # env -i alone still leaves python's USER site on (found via the passwd entry, not $HOME), so a .pth
 # or usercustomize.py in the tenant's ~/.local/lib/python3.*/site-packages would run inside turn.
 # -I turns it off. Tested on a copy with one instrumentation line added, run through the real shebang.
@@ -154,6 +155,14 @@ grep -qx -- --resume "$T/claude-args" && grep -qx sess-123 "$T/claude-args" && [
   && [ "$(field 'r[0]["api_duration_ms"]')" = 42 ] && [ "$(field 'r[0]["usage_scope"]')" = '"session_cumulative"' ] \
   && ok "--resume passed to claude and recorded; api_duration_ms and usage_scope kept" \
   || bad "resume" "args=$(tr '\n' ' ' < "$T/claude-args") row=$(field 'r[0]')"
+
+fresh; run "$ARGSPY" --trigger t "p" >/dev/null 2>&1
+[ "$(grep -A1 -x -- --model "$T/claude-args" | tail -1)" = claude-sonnet-5-5 ] && [ "$(field 'r[0]["model_requested"]')" = '"claude-sonnet-5-5"' ] \
+  && ok "no --model: claude gets --model claude-sonnet-5-5 and the row records it" \
+  || bad "default model" "args=$(tr '\n' ' ' < "$T/claude-args") row=$(field 'r[0]["model_requested"]')"
+fresh; run "$ARGSPY" --model m-x --trigger t "p" >/dev/null 2>&1
+[ "$(grep -A1 -x -- --model "$T/claude-args" | tail -1)" = m-x ] && [ "$(grep -c -x -- --model "$T/claude-args")" = 1 ] \
+  && ok "--model overrides the default, passed once" || bad "model override" "args=$(tr '\n' ' ' < "$T/claude-args")"
 
 echo "$pass ok, $fail failed"
 [ $fail = 0 ]
