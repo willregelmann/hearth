@@ -248,7 +248,7 @@ records) applied where humans can't apply it.
 
 **One link, two sides; don't build it twice (Foil).** The working-memory supersession list
 (§3.2 item 5) and long-term memory need the same primitive: "X replaces Y". On the
-long-term side that's tapestry#4 (`foil/note-supersedes` @ 16f83378), which adds
+long-term side that's tapestry PR #4 (open; merging is Foil's), which adds
 `tapestry_note(supersedes=#n)`. The replaced memory leaves recall but is kept, and the call
 refuses targets that are stale or that it can't see. The missing tool is the measured
 reason no memory has ever been retired: Foil 0 of 603, Wren 0 of 2,344. Build the
