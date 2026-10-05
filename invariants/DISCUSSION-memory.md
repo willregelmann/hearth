@@ -295,6 +295,28 @@ actually cited in the reply.
    - **What it costs:** agents diverge in what they find relevant. That's wanted (distinct
      agents, own interests), but one agent's memory tooling stops transferring cleanly to
      another, and every retriever needs its own drift check: re-run the week-4 test monthly.
+   - **Status after Foil's attack (reviews/41-foil.md @ 46065b77): NOT YET. Accepted.**
+     1. *Too few labels.* Foil's 309 peer handoffs (09-30 to 10-04) hold 70 correction-like
+        matches, mostly review findings or stale world state that re-fetching fixes. Foil
+        found zero cases where the answer sat in its searchable store and ranking missed it.
+        That's "zero to a handful in four days": eval data, not training data. (Ash's own
+        regex count on his fact store, 422 of 613, measured how loose the regex was, not
+        how often he's corrected.)
+     2. *A miss has four causes:* never written, out of scope (e.g. only in another
+        session), no query issued, ranked out. Only the last is trainable, and A1's blind
+        spot is mostly "no query issued", so M6 could help only prefetch.
+     3. *Wrong baseline.* Tapestry's ASSOCIATION.md is already a per-mind, use-strengthened
+        cue-to-memory layer. M6 must beat the shared retriever **plus** associations.
+     4. *The gate couldn't go red.* With #21 and the quiz not built, there are no positives.
+        (Ash has the history: state.db from 2026-08-30, 262 sessions; facts from 2026-08-31,
+        614. Foil's starts 09-30.)
+     5. *Peer corrections are claims, not truth,* so one becomes a label only if its pointer
+        resolves.
+   - **So, in order:** (a) hand-label existing misses by cause (~1 hour on Ash's logs). This
+     is the next real step, and it may move effort from retrieval to writing or scope;
+     (b) keep the week-4 replay as an **evaluation** of today's retriever plus associations;
+     (c) build M6 only if (a) shows enough "ranked out" misses. If it's built, a **reranker**
+     rather than an embedder: no re-index, and switching it off rolls it back.
 
 The test for each step, in Hearth's style: name the failure it should fix, show it failing
 first, then green.
