@@ -14,6 +14,9 @@ PATH="/usr/bin:/bin"; LANG=C.UTF-8
 # Nothing the tenant can write is on PATH: the judged party must not choose its judge's tools.
 # The one tenant binary, claude, is named by its full path (provision installs it there).
 CLAUDE="$HOME/.local/bin/claude"
+# Where Claude Code keeps its own memory: auto-memory files under projects/*/memory/ and the user
+# CLAUDE.md. Its auto-memory is on by default, so "memory absent" is a claim to test, not to declare.
+CLAUDE_HOME="$HOME/.claude"; HOME_CLAUDE_MD="$HOME/CLAUDE.md"
 export USER LOGNAME HOME PATH LANG
 
 NO_MODEL=0; [ "${1:-}" = "--no-model" ] && { NO_MODEL=1; shift; }
@@ -24,7 +27,7 @@ INV=${1:-$DEFAULT_INV}
 LEDGER="$HOME/.hearth/ledger.jsonl"
 # Items the run must contain, with the check each must use, whatever the list says: an inventory that
 # drops one, or swaps its check for a weaker one (e.g. declared_absent), can't pass.
-REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant"
+REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant memory:no_memory"
 # Membership in any of these is root without a sudoers rule. provision denies the same list.
 ROOT_GROUPS="sudo admin wheel docker lxd libvirt"
 ATTEST_DIR=/opt/hearth/home/attest; ATTEST_OWNER=root
@@ -141,6 +144,15 @@ c_no_sudo() {
   echo "groups:$g; root-side: $(head -n 1 "$att"); sudoers unchanged since"
 }
 c_declared_absent() { return 3; }
+# Memory declared absent must be absent by effect. Buster's first turn (main 68890beb) had Claude
+# Code's auto-memory write three files under ~/.claude/projects/-home-buster/memory/ while this line
+# read "declared absent". Any file there, or a user/home CLAUDE.md, is memory the agent carries.
+c_no_memory() {
+  found=$(find "$CLAUDE_HOME"/projects/*/memory "$CLAUDE_HOME/CLAUDE.md" "$HOME_CLAUDE_MD" \
+            -type f 2>/dev/null | head -n 5)
+  [ -z "$found" ] || { echo "memory present: $(echo "$found" | tr '\n' ' ')"; return 1; }
+  echo "no auto-memory or CLAUDE.md under $CLAUDE_HOME or $HOME"
+}
 # Inbound custody: can anyone else read the tenant's home? Any other login account in a
 # root-equivalent group can. That is Will's soft-boundary decision (invariants/SYNTHESIS-round1.md):
 # accepted, not met, so it reports KNOWN, which never prints GREEN and doesn't fail the run.

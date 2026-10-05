@@ -12,6 +12,6 @@ oauth       | loan   | Will        | Anthropic (Max)          | model_turn
 ledger      | own    | tenant      | turn runner              | ledger_writable
 custody     | own    | tenant      | OS user boundary         | others_unreadable
 custody_in  | own    | tenant      | OS user boundary         | inbound_custody
-memory      | absent | -           | -                        | declared_absent
+memory      | absent | -           | -                        | no_memory
 sudo        | absent | -           | -                        | no_sudo
 judge       | own    | root        | provision (/opt/hearth)  | judge_not_tenant
