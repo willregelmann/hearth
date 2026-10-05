@@ -16,7 +16,7 @@ PATH="/usr/bin:/bin"; LANG=C.UTF-8
 CLAUDE="$HOME/.local/bin/claude"
 # Where Claude Code keeps its own memory: auto-memory files under projects/*/memory/ and the user
 # CLAUDE.md. Its auto-memory is on by default, so "memory absent" is a claim to test, not to declare.
-CLAUDE_HOME="$HOME/.claude"; HOME_CLAUDE_MD="$HOME/CLAUDE.md"
+MEM_HOME="$HOME"; CLAUDE_HOME="$MEM_HOME/.claude"
 export USER LOGNAME HOME PATH LANG
 
 NO_MODEL=0; [ "${1:-}" = "--no-model" ] && { NO_MODEL=1; shift; }
@@ -146,12 +146,38 @@ c_no_sudo() {
 c_declared_absent() { return 3; }
 # Memory declared absent must be absent by effect. Buster's first turn (main 68890beb) had Claude
 # Code's auto-memory write three files under ~/.claude/projects/-home-buster/memory/ while this line
-# read "declared absent". Any file there, or a user/home CLAUDE.md, is memory the agent carries.
+# read "declared absent".
+# The set is what Claude Code documents as loaded for a session whose cwd is the home (docs read
+# 2026-10-05, not verified against 2.1.288 itself). The tenant owns all of it and is the judged
+# party, so: any entry counts, links and other non-files included; a place the check can't look
+# into is RED, never "nothing found"; and a relocated auto-memory dir is RED (it can't be found).
 c_no_memory() {
-  found=$(find "$CLAUDE_HOME"/projects/*/memory "$CLAUDE_HOME/CLAUDE.md" "$HOME_CLAUDE_MD" \
-            -type f 2>/dev/null | head -n 5)
-  [ -z "$found" ] || { echo "memory present: $(echo "$found" | tr '\n' ' ')"; return 1; }
-  echo "no auto-memory or CLAUDE.md under $CLAUDE_HOME or $HOME"
+  found=""
+  for p in "$MEM_HOME/CLAUDE.md" "$MEM_HOME/CLAUDE.local.md" "$MEM_HOME/AGENTS.md" \
+           "$CLAUDE_HOME/CLAUDE.md" "$CLAUDE_HOME/CLAUDE.local.md" \
+           /home/CLAUDE.md /home/CLAUDE.local.md /CLAUDE.md /CLAUDE.local.md /etc/claude-code/CLAUDE.md; do
+    { [ -e "$p" ] || [ -L "$p" ]; } && found="$found $p"
+  done
+  for s in "$CLAUDE_HOME/settings.json" "$CLAUDE_HOME/settings.local.json" /etc/claude-code/managed-settings.json; do
+    { [ -e "$s" ] || [ -L "$s" ]; } || continue
+    [ -r "$s" ] || { echo "can't read $s, so can't rule out memory settings in it"; return 1; }
+    grep -qE '"(autoMemoryDirectory|claudeMd)"' "$s" && found="$found $s(autoMemoryDirectory/claudeMd)"
+  done
+  # Directories: -L follows links at every level (a linked memory/ or a linked MEMORY.md), and any
+  # find error (a mode-000 dir, a loop) is RED. stderr is kept, never discarded.
+  roots=""
+  for d in "$CLAUDE_HOME/projects" "$CLAUDE_HOME/rules"; do
+    { [ -e "$d" ] || [ -L "$d" ]; } && roots="$roots $d"
+  done
+  if [ -n "$roots" ]; then
+    # shellcheck disable=SC2086
+    out=$(find -L $roots \( -path "$CLAUDE_HOME/projects/*/memory/*" -o -path "$CLAUDE_HOME/rules/*" \) \
+            ! -type d -print 2>&1); rc=$?
+    [ $rc = 0 ] || { echo "couldn't look everywhere (find rc $rc): $(echo "$out" | head -n 3 | tr '\n' ' ')"; return 1; }
+    [ -n "$out" ] && found="$found $(echo "$out" | head -n 5 | tr '\n' ' ')"
+  fi
+  [ -z "$found" ] || { echo "memory present:$found"; return 1; }
+  echo "no CLAUDE.md/.local/AGENTS.md, auto-memory, rules or memory setting for a session in $MEM_HOME"
 }
 # Inbound custody: can anyone else read the tenant's home? Any other login account in a
 # root-equivalent group can. That is Will's soft-boundary decision (invariants/SYNTHESIS-round1.md):
