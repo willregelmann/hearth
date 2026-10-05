@@ -179,10 +179,18 @@ try:
     # here would block open() and the judge would never return (Ash on #42), and a [ -f ] test
     # first leaves the tenant a window to swap the file for one.
     fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK)
-    if not stat.S_ISREG(os.fstat(fd).st_mode):
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode):
         print("not a regular file"); sys.exit(2)
+    # Bounded: a sparse file costs the tenant no disk but would cost the judge its memory (Ash on
+    # #42: 1 GiB sparse = 1.3 GB RSS). The read itself is capped, which also covers a file grown
+    # after it was opened. (No apostrophes in this block: it is one single-quoted bash string.)
+    BOUND = 1 << 20
     with os.fdopen(fd, "rb") as f:
-        d = json.load(f)
+        raw = f.read(BOUND + 1)
+    if len(raw) > BOUND:
+        print("too large (over %d bytes)" % BOUND); sys.exit(2)
+    d = json.loads(raw)
 except Exception as e:
     print("unparseable: %s" % type(e).__name__); sys.exit(2)
 hit = sorted({k for k in keys(d) if k in ("autoMemoryDirectory", "claudeMd")})

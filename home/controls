@@ -244,6 +244,10 @@ memreset; mkfifo "$m/.claude/settings.json"
 timeout 20 "$t/memc" --no-model > "$t/out" 2>&1; frc=$?
 expect "memory: a FIFO settings.json is RED and check returns" \
   $([ $frc != 124 ] && grep -qE '^RED    memory .*not a regular file' "$t/out"; echo $?) "rc=$frc $(grep ' memory ' "$t/out")"
+# a sparse 2 MiB settings.json: costs the tenant no disk, but an unbounded read costs the judge RAM
+memreset; truncate -s 2M "$m/.claude/settings.json"; memrun
+expect "memory: an oversized (sparse) settings.json is RED as too large" \
+  $(grep -qE '^RED    memory .*too large' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
 memreset; echo '{"autoMemoryEnabled": false, "env": {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}}' > "$m/.claude/settings.json"; memrun
 expect "memory: provision's settings.json alone is still ABSENT" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
 memreset; sed 's/| no_memory$/| declared_absent/' "$here/inventory" > "$t/inventory"; memrun
