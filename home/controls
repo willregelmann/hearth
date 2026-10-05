@@ -238,6 +238,12 @@ memreset; echo '{"autoMemoryDirectory": "~/elsewhere"}' > "$m/.claude/settings.j
 memreset; printf '%s\n' '{"autoMemory\u0044irectory": "/tmp/x"}' > "$m/.claude/settings.json"; memred "an escaped autoMemoryDirectory key"
 memreset; echo '{"env": {"x": {"claudeMd": "remember"}}}' > "$m/.claude/settings.local.json"; memred "a nested claudeMd key"
 memreset; echo '{"autoMemoryEnabled": false, // not json' > "$m/.claude/settings.json"; memred "an unparseable settings.json"
+# a FIFO for settings.json: open() would block and check would never return. Under a timeout, so a
+# regression shows as a FAIL here, not a hung controls run.
+memreset; mkfifo "$m/.claude/settings.json"
+timeout 20 "$t/memc" --no-model > "$t/out" 2>&1; frc=$?
+expect "memory: a FIFO settings.json is RED and check returns" \
+  $([ $frc != 124 ] && grep -qE '^RED    memory .*not a regular file' "$t/out"; echo $?) "rc=$frc $(grep ' memory ' "$t/out")"
 memreset; echo '{"autoMemoryEnabled": false, "env": {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}}' > "$m/.claude/settings.json"; memrun
 expect "memory: provision's settings.json alone is still ABSENT" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
 memreset; sed 's/| no_memory$/| declared_absent/' "$here/inventory" > "$t/inventory"; memrun

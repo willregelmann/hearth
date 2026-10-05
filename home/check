@@ -165,7 +165,7 @@ c_no_memory() {
     # that a byte grep can't see (Ash's {"autoMemory\u0044irectory": ...} on #42). Keys are looked for
     # at any depth; anything that doesn't parse as JSON is RED, never "nothing found".
     k=$(/usr/bin/python3 -I -c '
-import json, sys
+import json, os, stat, sys
 def keys(o):
     if isinstance(o, dict):
         for k, v in o.items():
@@ -175,7 +175,13 @@ def keys(o):
         for v in o:
             yield from keys(v)
 try:
-    with open(sys.argv[1], "rb") as f:
+    # O_NONBLOCK and a regular-file check on the open descriptor, not a test before opening: a FIFO
+    # here would block open() and the judge would never return (Ash on #42), and a [ -f ] test
+    # first leaves the tenant a window to swap the file for one.
+    fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        print("not a regular file"); sys.exit(2)
+    with os.fdopen(fd, "rb") as f:
         d = json.load(f)
 except Exception as e:
     print("unparseable: %s" % type(e).__name__); sys.exit(2)
