@@ -35,7 +35,10 @@ claude-sonnet-5-5.
 N2: provision's guard on an existing file checks only autoMemoryEnabled, not the env key. Either
 alone disables auto-memory per the docs, so that's fine, but the die message could name both.
 
-## Re-review at 0947bd18ed565a65595a540ba394436be32d38f7
+## S1 follow-up: hearth#44 at 0947bd18ed565a65595a540ba394436be32d38f7
+
+Ash moved this commit off #43 onto its own PR, #44, stacked on #43's branch, so #43's head stays
+899d86c6 and the APPROVE above binds there. This section is the review of #44.
 
 Delta 899d86c6..0947bd18 (one Ash commit, turn + turn-controls only): S1 above, taken as proposed.
 turn's fixed ENV gains CLAUDE_CODE_DISABLE_AUTO_MEMORY=1, which is root-installed and out of the
@@ -47,7 +50,7 @@ cmp-checked:
 - value "0": 25 ok, 1 FAIL (auto-memory off: CLAUDE_CODE_DISABLE_AUTO_MEMORY=0). So the =1 check
   isn't redundant with the key-set check.
 
-Verdict: APPROVE at 0947bd18. S1 is resolved. N1 still stands, and the effect check is the same one:
+Verdict for #44: APPROVE at 0947bd18. S1 is resolved. N1 still stands, and the effect check is the same one:
 whether 2.1.288 honours the variable is untested [believe, from the docs]. The proof is Buster's
 next turn after install: a ledger row whose models has the single key claude-sonnet-5-5, and no
 memory/ dir afterwards. Once #42 is installed, its check reads that as ABSENT. N2 is unchanged.
