@@ -244,9 +244,13 @@ memreset; mkfifo "$m/.claude/settings.json"
 timeout 20 "$t/memc" --no-model > "$t/out" 2>&1; frc=$?
 expect "memory: a FIFO settings.json is RED and check returns" \
   $([ $frc != 124 ] && grep -qE '^RED    memory .*not a regular file' "$t/out"; echo $?) "rc=$frc $(grep ' memory ' "$t/out")"
-# a sparse 2 MiB settings.json: costs the tenant no disk, but an unbounded read costs the judge RAM
-memreset; truncate -s 2M "$m/.claude/settings.json"; memrun
-expect "memory: an oversized (sparse) settings.json is RED as too large" \
+# a sparse 1 GiB settings.json: costs the tenant no disk, but an unbounded read costs the judge RAM.
+# Under ulimit -v, so the bound itself is tested, not just the verdict: an unbounded read with the
+# same length check still says "too large" when memory is free, but here it can't allocate and
+# reports "unparseable: MemoryError" instead (Wren's mutation on #42).
+memreset; truncate -s 1G "$m/.claude/settings.json"
+( ulimit -v 262144; "$t/memc" --no-model ) > "$t/out" 2>&1
+expect "memory: a 1 GiB sparse settings.json is RED as too large, within 256 MiB" \
   $(grep -qE '^RED    memory .*too large' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
 memreset; echo '{"autoMemoryEnabled": false, "env": {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}}' > "$m/.claude/settings.json"; memrun
 expect "memory: provision's settings.json alone is still ABSENT" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
