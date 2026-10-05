@@ -95,3 +95,17 @@ part of M0's baseline needs that differencing, or it double-counts.
   inside Buster's custody. The open custody question is the job's model call. It goes out on
   the shared Max loan like every other turn, so it should go through the turn runner with
   trigger "consolidation" and land in the ledger like anything else.
+
+## Re-look at 119ac0d
+
+Read the delta 5c3ce739..119ac0d (DISCUSSION-memory.md only, +46/−11). A1, A2, §7.1, the turn
+runner for the nightly job, the order for the reconsolidation guard, and the §2 numbers are all in,
+and they say what I meant. A1 in particular is stated better than I put it ("UNLABELLED, not
+negative", and the M5 metric changed to match). No objections left on the design.
+
+Two label fixes, wording only, not blocking:
+- §4.1 "so the saving is larger than the 12% headline" states as fact what I marked [believe]. I
+  haven't modelled per-turn cost against session length. Tag it [proposal], or say "Foil believes".
+  The week on Buster measures it anyway (item 3, cost).
+- §3.4 cites the negative-claim rule as "(#21)". #21 is still open, so it's a proposal, not
+  something Hearth has. Worth saying, since M5 depends on it.
