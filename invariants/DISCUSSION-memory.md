@@ -246,6 +246,17 @@ drifts from the verbatim source is an error, not an update. Concretely, the nigh
 re-reads the cited lines for every fact it touches. That's the human remedy (external
 records) applied where humans can't apply it.
 
+**One link, two sides; don't build it twice (Foil).** The working-memory supersession list
+(§3.2 item 5) and long-term memory need the same primitive: "X replaces Y". On the
+long-term side that's tapestry#4 (`foil/note-supersedes` @ 16f83378), which adds
+`tapestry_note(supersedes=#n)`. The replaced memory leaves recall but is kept, and the call
+refuses targets that are stale or that it can't see. The missing tool is the measured
+reason no memory has ever been retired: Foil 0 of 603, Wren 0 of 2,344. Build the
+supersession list on the same shape. **Caveat (Ash):** #4 says the replaced memory "stays
+readable via `tapestry_why`", but `tapestry_why` also shows evidence from hidden
+namespaces, a leak that predates #4. So nothing here may count "readable via
+`tapestry_why`" as a safe property until that's fixed.
+
 ### 4.3 A prefrontal gate on recall
 
 [proposal] Recall is matched to the current *task* (open intentions + this turn), and a
