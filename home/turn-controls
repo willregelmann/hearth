@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# home/turn-controls: positive and negative controls for home/turn. Uses a temporary copy of turn
+# pointed at a stub claude and a scratch ledger. Needs no tenant and no model; any user can run it.
+set -u
+here=$(dirname "$(readlink -f "$0")")
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+fail=0
+expect() { if [ "$2" = 0 ]; then echo "ok   $1"; else echo "FAIL $1: $3"; fail=1; fi; }
+L=$t/ledger.jsonl; : > "$L"
+mk() { # $1 = stub body; makes $t/turn pointing at $t/claude and $L
+  printf '#!/bin/sh\n%s\n' "$1" > "$t/claude"; chmod +x "$t/claude"
+  sed -e "s#^CLAUDE = .*#CLAUDE = '$t/claude'#" -e "s#^LEDGER = .*#LEDGER = '$L'#" "$here/turn" > "$t/turn"
+  chmod +x "$t/turn"
+  grep -q "^CLAUDE = '$t/claude'" "$t/turn" && grep -q "^LEDGER = '$L'" "$t/turn" || { echo "FAIL could not retarget turn"; exit 1; }
+}
+rows() { wc -l < "$L" | tr -d ' '; }
+last() { tail -n 1 "$L" | python3 -c "import json,sys; r=json.load(sys.stdin); print($1)"; }
+OK='{"type":"result","is_error":false,"result":"HELLO","session_id":"s-1","num_turns":1,"duration_api_ms":900,"total_cost_usd":0.069,"modelUsage":{"claude-sonnet-5-5":{"inputTokens":3,"outputTokens":5,"cacheReadInputTokens":10566,"cacheCreationInputTokens":16755,"costUSD":0.068},"claude-haiku-4-5":{"inputTokens":40,"outputTokens":2,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"costUSD":0.001}}}'
+
+# 1. a normal turn: reply on stdout, rc 0, one row, per-model usage kept separate, no stdin read
+mk "cat > /dev/null; echo '$OK'"
+out=$(printf 'SHOULD-NOT-BE-READ\n' | "$t/turn" --trigger test hi); rc=$?
+expect "ok turn: reply passed through, rc 0" $([ "$out" = HELLO ] && [ $rc = 0 ]; echo $?) "rc=$rc out=$out"
+expect "ok turn: exactly one row" $([ "$(rows)" = 1 ]; echo $?) "rows=$(rows)"
+m=$(last 'r["models"]["claude-sonnet-5-5"]["cache_write"], r["models"]["claude-sonnet-5-5"]["cache_read"], len(r["models"]), r["list_cost_usd"], r["trigger"], r["session_id"], r["error"], r["self_reported"]')
+expect "ok turn: per-model cache_write/cache_read, 2 models, cost, trigger, session" \
+  $([ "$m" = "16755 10566 2 0.069 test s-1 None True" ]; echo $?) "$m"
+expect "first row: secs_since_prev_turn null" $([ "$(last 'r["secs_since_prev_turn"]')" = None ]; echo $?) "$(last 'r["secs_since_prev_turn"]')"
+
+# 2. stdin: the stub records whether it saw any stdin; the runner must give it /dev/null
+mk "if [ -t 0 ]; then :; fi; n=\$(cat | wc -c); echo \$n > '$t/stdin_bytes'; echo '$OK'"
+printf 'INVENTORY LINE\n' | "$t/turn" --trigger test hi > /dev/null
+expect "claude gets no stdin from the caller" $([ "$(cat "$t/stdin_bytes")" = 0 ]; echo $?) "bytes=$(cat "$t/stdin_bytes")"
+expect "second row: secs_since_prev_turn set, >= 0" \
+  $(last 'r["secs_since_prev_turn"] is not None and r["secs_since_prev_turn"] >= 0' | grep -qx True; echo $?) "$(last 'r["secs_since_prev_turn"]')"
+
+# 3. failures still write exactly one row each, with the reason and null usage
+n0=$(rows); mk "echo boom >&2; exit 3"; "$t/turn" --trigger fail hi > /dev/null 2>&1; rc=$?
+expect "nonzero exit: rc passed through, one row, error set" \
+  $([ $rc = 3 ] && [ "$(rows)" = $((n0+1)) ] && last 'r["rc"], r["error"].startswith("nonzero exit"), r["models"]' | grep -qx "3 True {}"; echo $?) "rc=$rc $(tail -n1 "$L")"
+n0=$(rows); mk "echo 'not json'"; "$t/turn" --trigger fail hi > /dev/null 2>&1
+expect "unparseable output: one row, error set" \
+  $([ "$(rows)" = $((n0+1)) ] && last 'r["error"].startswith("unparseable")' | grep -qx True; echo $?) "$(tail -n1 "$L")"
+n0=$(rows); mk "sleep 5"; "$t/turn" --trigger fail --timeout 1 hi > /dev/null 2>&1; rc=$?
+expect "timeout: rc 124, one row, error set" \
+  $([ $rc = 124 ] && [ "$(rows)" = $((n0+1)) ] && last 'r["error"].startswith("timeout")' | grep -qx True; echo $?) "rc=$rc $(tail -n1 "$L")"
+n0=$(rows); mk "echo '{\"is_error\":true,\"result\":\"auth failed\",\"session_id\":null}'"; "$t/turn" --trigger fail hi > /dev/null 2>&1
+expect "is_error result: one row, error set" \
+  $([ "$(rows)" = $((n0+1)) ] && last 'r["error"].startswith("is_error")' | grep -qx True; echo $?) "$(tail -n1 "$L")"
+
+# 4. bad usage writes no row (there was no turn) and exits 2
+n0=$(rows); "$t/turn" hi > /dev/null 2>&1; rc=$?
+expect "no --trigger: rc 2, no row" $([ $rc = 2 ] && [ "$(rows)" = $n0 ]; echo $?) "rc=$rc rows=$(rows)"
+
+# 5. concurrency: 20 turns at once give 20 whole rows, every one valid JSON
+: > "$L"; mk "sleep 0.\$((\$\$ % 3)); echo '$OK'"
+for i in $(seq 20); do "$t/turn" --trigger c hi > /dev/null & done; wait
+bad=$(python3 -c "
+import json; n=0; b=0
+for l in open('$L'):
+    n+=1
+    try: json.loads(l)
+    except ValueError: b+=1
+print(n, b)")
+expect "20 concurrent turns: 20 rows, all valid" $([ "$bad" = "20 0" ]; echo $?) "rows,bad=$bad"
+nulls=$(python3 -c "
+import json; print(sum(1 for l in open('$L') if json.loads(l)['secs_since_prev_turn'] is None))")
+expect "concurrent: only the first row has no predecessor" $([ "$nulls" = 1 ]; echo $?) "null secs rows=$nulls"
+# What the lock protects is the pair (read the previous row, append this one), so each row's
+# secs_since_prev_turn must be computed from the row physically before it. The unlocked window is
+# microseconds, so a copy of turn with a 0.2s sleep between the read and the append is used to
+# make it observable. With the lock the sleep is serialized and every row is consistent; without it,
+# turns read the same predecessor and the check fails (both arms ran).
+sed 's/^        pe = prev_end(f)$/        pe = prev_end(f); time.sleep(0.2)/' "$t/turn" > "$t/turn.slow"; chmod +x "$t/turn.slow"
+grep -q 'pe = prev_end(f); time.sleep(0.2)' "$t/turn.slow" || { echo "FAIL could not widen the window"; fail=1; }
+: > "$L"; for i in $(seq 8); do "$t/turn.slow" --trigger c hi > /dev/null & done; wait
+incons=$(python3 -c "
+import json; from datetime import datetime
+rs=[json.loads(l) for l in open('$L')]
+def t(r): return datetime.fromisoformat(r['ts'].replace('Z','+00:00')).timestamp()
+bad=[i for i in range(1,len(rs)) if rs[i]['secs_since_prev_turn'] is None
+     or abs(rs[i]['secs_since_prev_turn'] - round(t(rs[i]) - (t(rs[i-1]) + rs[i-1]['duration_ms']/1000), 3)) > 0.002]
+print(len(rs), len(bad))")
+expect "each row's secs_since_prev_turn is from the row before it (8 concurrent, widened window)" \
+  $([ "$incons" = "8 0" ]; echo $?) "rows,inconsistent=$incons"
+
+# 6. the environment is cleared: a caller's BASH_ENV / PYTHONPATH / PATH can't reach turn or claude
+mk "env > '$t/env'; echo '$OK'"
+mkdir -p "$t/evil"; printf 'raise SystemExit("hijacked")\n' > "$t/evil/json.py"
+PYTHONPATH=$t/evil PATH=$t/evil:$PATH SECRET=x "$t/turn" --trigger e hi > /dev/null 2>&1; rc=$?
+expect "caller env cleared (PYTHONPATH, PATH, others don't reach claude)" \
+  $([ $rc = 0 ] && ! grep -q '^SECRET=' "$t/env" && grep -qx 'PATH=/usr/bin:/bin' "$t/env"; echo $?) "rc=$rc $(tr '\n' ' ' < "$t/env")"
+
+exit $fail

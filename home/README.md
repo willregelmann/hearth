@@ -9,6 +9,15 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   reports GREEN, RED, ABSENT (declared), KNOWN or SKIP. It exits 0 only if nothing is RED or SKIP.
   KNOWN is a failure accepted by a recorded decision: it never prints as GREEN, and it doesn't
   fail the run.
+- `turn`: the turn runner, installed root-owned at /opt/hearth/home/turn. Run AS THE TENANT:
+  `/opt/hearth/home/turn --trigger <what woke it> [--resume <session>] <prompt>`. It runs one
+  `claude -p` turn, prints the reply, exits with claude's code, and appends exactly one row to
+  `~/.hearth/ledger.jsonl`, failed turns included. Fields (schema v1): ts, trigger, session_id, rc,
+  error, duration_ms, api_duration_ms, num_turns, secs_since_prev_turn, list_cost_usd (list price;
+  Max doesn't bill per turn), models (per model: input, output, cache_read, cache_write,
+  list_cost_usd), self_reported (always true: the tenant writes the file, so rows are its claims).
+  `turn-controls` exercises it with a stub claude (stdin, every failure path, 20 concurrent turns,
+  the lock, the environment); each guard's control was shown to fail with the guard removed.
 - `provision`: run by Will with sudo (`--dry-run` changes nothing). Before any change it stops
   unless the host has setfacl and getfacl (the `acl` package, which Raspberry Pi OS doesn't ship)
   and an `env` that takes `-S` (coreutils 8.30 or later). It creates the tenant from the

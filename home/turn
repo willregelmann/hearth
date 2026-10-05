@@ -1,0 +1,140 @@
+#!/usr/bin/env -S -i /usr/bin/python3 -I
+"""home/turn: run one Claude Code turn as the tenant, and append one row to its turn ledger.
+
+    turn --trigger <what woke it> [--resume <session_id>] [--model sonnet] [--timeout 600] <prompt>
+
+Run AS THE TENANT. It prints the reply on stdout, and the exit code is claude's (124 on timeout).
+Every attempt writes exactly one row, including failed, timed-out and unparseable turns, so the
+ledger never undercounts the turns most worth seeing.
+
+Row fields (one JSON object per line in ~/.hearth/ledger.jsonl):
+  v                     schema version (1)
+  ts                    turn start, UTC ISO-8601
+  trigger               what woke the turn (caller-supplied; required)
+  session_id            from claude's result, or null
+  rc                    claude's exit code; 124 = timed out
+  error                 null, or a short reason (timeout / nonzero exit / unparseable / is_error)
+  duration_ms           wall time measured here
+  api_duration_ms       claude's duration_api_ms, or null
+  num_turns             claude's num_turns, or null
+  secs_since_prev_turn  ts minus the previous row's end; null for the first row
+  list_cost_usd         claude's total_cost_usd: LIST price. Max plans don't bill per turn.
+  models                {model: {input, output, cache_read, cache_write, list_cost_usd}}, per model
+                        as claude reports them (modelUsage), never flattened; {} if none
+  self_reported         true: the tenant writes this file, so every row is its own claim
+
+Why the shape:
+- The environment is cleared by the shebang, and the prompt is passed as an argument with stdin
+  set to /dev/null. claude -p reads piped stdin, and once ate check's inventory that way.
+- The read of the previous row and the append happen under one flock, and each row is one write(),
+  so concurrent turns of one tenant can't interleave or compute secs_since_prev_turn from a row
+  being written.
+- claude is named by its full path in the tenant's home (provision installs it there). PATH holds
+  nothing the tenant can write.
+"""
+import fcntl, json, os, pwd, subprocess, sys, time
+from datetime import datetime, timezone
+
+pw = pwd.getpwuid(os.getuid())
+HOME = pw.pw_dir
+CLAUDE = os.path.join(HOME, ".local/bin/claude")
+LEDGER = os.path.join(HOME, ".hearth/ledger.jsonl")
+ENV = {"HOME": HOME, "USER": pw.pw_name, "LOGNAME": pw.pw_name, "PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
+
+
+def usage(argv):
+    sys.stderr.write("usage: turn --trigger <what> [--resume <session_id>] [--model M] [--timeout S] <prompt>\n")
+    sys.exit(2)
+
+
+def parse(argv):
+    o = {"trigger": None, "resume": None, "model": "sonnet", "timeout": 600}
+    a = list(argv)
+    while a and a[0].startswith("--"):
+        k = a.pop(0)[2:]
+        if k not in o or not a:
+            usage(argv)
+        o[k] = a.pop(0)
+    if not o["trigger"] or len(a) != 1 or not a[0]:
+        usage(argv)
+    o["timeout"] = int(o["timeout"])
+    o["prompt"] = a[0]
+    return o
+
+
+def iso(t):
+    return datetime.fromtimestamp(t, timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def models_of(res):
+    out = {}
+    for m, u in (res.get("modelUsage") or {}).items():
+        out[m] = {"input": u.get("inputTokens"), "output": u.get("outputTokens"),
+                  "cache_read": u.get("cacheReadInputTokens"), "cache_write": u.get("cacheCreationInputTokens"),
+                  "list_cost_usd": u.get("costUSD")}
+    return out
+
+
+def prev_end(f):
+    """End time (epoch) of the last complete row, or None. Reads only the tail."""
+    f.seek(0, os.SEEK_END)
+    size = f.tell()
+    f.seek(max(0, size - 65536))
+    lines = [l for l in f.read().split(b"\n") if l.strip()]
+    for l in reversed(lines):
+        try:
+            r = json.loads(l)
+            return datetime.fromisoformat(r["ts"].replace("Z", "+00:00")).timestamp() + (r.get("duration_ms") or 0) / 1000
+        except (ValueError, KeyError, TypeError):
+            continue
+    return None
+
+
+def main():
+    o = parse(sys.argv[1:])
+    cmd = [CLAUDE, "-p", "--model", o["model"], "--output-format", "json"]
+    if o["resume"]:
+        cmd += ["--resume", o["resume"]]
+    cmd.append(o["prompt"])
+    t0 = time.time()
+    rc, out, err = None, "", None
+    try:
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                           timeout=o["timeout"], cwd=HOME, env=ENV)
+        rc, out = p.returncode, p.stdout
+        if rc != 0:
+            err = "nonzero exit: " + (p.stderr or p.stdout).strip()[-200:]
+    except subprocess.TimeoutExpired:
+        rc, err = 124, "timeout after %ss" % o["timeout"]
+    except OSError as e:
+        rc, err = 127, "could not run claude: %s" % e
+    t1 = time.time()
+    res = {}
+    if out:
+        try:
+            res = json.loads(out)
+        except ValueError:
+            err = err or "unparseable output: " + out.strip()[-200:]
+    if res.get("is_error") and not err:
+        err = "is_error: " + str(res.get("result", ""))[-200:]
+    row = {"v": 1, "ts": iso(t0), "trigger": o["trigger"], "session_id": res.get("session_id"),
+           "rc": rc, "error": err, "duration_ms": int((t1 - t0) * 1000),
+           "api_duration_ms": res.get("duration_api_ms"), "num_turns": res.get("num_turns"),
+           "secs_since_prev_turn": None, "list_cost_usd": res.get("total_cost_usd"),
+           "models": models_of(res), "self_reported": True}
+    with open(LEDGER, "ab+") as f:          # fails loudly if the ledger dir is missing: HOME's job
+        fcntl.flock(f, fcntl.LOCK_EX)
+        pe = prev_end(f)
+        if pe is not None:
+            row["secs_since_prev_turn"] = round(t0 - pe, 3)
+        f.seek(0, os.SEEK_END)
+        os.write(f.fileno(), (json.dumps(row, separators=(",", ":")) + "\n").encode())
+    if res.get("result") is not None:
+        sys.stdout.write(str(res["result"]) + "\n")
+    elif err:
+        sys.stderr.write("turn: %s\n" % err)
+    sys.exit(rc if rc is not None else 1)
+
+
+if __name__ == "__main__":
+    main()
