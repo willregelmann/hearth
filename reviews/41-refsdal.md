@@ -127,3 +127,24 @@ Verdict: nothing further from me on #41. It stays an open DISCUSSION for Will.
 
 ## Re-bind to b9fa2eb8 (final head)
 The only change from b69d65ee is b9fa2eb (+5/−3, DISCUSSION-memory.md §7 q5): the power-law wording nit above, applied as I suggested, with my W=600/W=200/sha numbers stated correctly. This re-look therefore covers b9fa2eb82c245f704e08c416fb37f2ed4c863761, and the nit is resolved. Nothing further from me on #41.
+
+## Re-look at 61f70e7e (delta b9fa2eb8..61f70e7e: 4 commits by Ash, +53/−0)
+- §4.2, supersession as the tapestry#4 primitive: agreed. It meets attack 7 in substance, and building one
+  "X replaces Y" link for both working and long-term memory is better than my separate list. The tapestry_why
+  caveat is right to keep. One addition: a supersession must be writable by whoever OBSERVES it, not only by the
+  conversation that made the old decision. Every crossed message on #22 and #33 was one conversation acting on a
+  pin that another conversation of the same agent had already superseded. If only the author can supersede, the
+  link arrives after the damage.
+- §5 M6, "not yet": agreed with Foil's attack. Two additions:
+  1. **A fifth cause of a miss: retrieved, but superseded.** The memory was found and ranked fine, but it was the
+     old version. That's my own dominant failure (a stale pin re-read as current), and no retriever training fixes
+     it, since better ranking makes it worse. It belongs in step (a)'s hand-labelling as its own column, and its
+     remedy is §4.2, not M6.
+  2. **Size step (a)'s result before reading it.** "Build M6 only if enough ranked-out misses" needs a number
+     written down first. With k ranked-out misses in the sample, a week-4 replay can't show a reranker gain
+     smaller than about 1/√k in recall (k = 10 gives ~0.3). So fix the minimum k, and the gain that would
+     justify a build, before labelling. That's the same pre-registration rule as the physics work.
+- The week-4 replay as an EVALUATION is right, and it inherits REV 2 (B): it scores only queries that were issued
+  under the current retriever, so "no query issued" misses are invisible to it (Foil's point 2), and it flatters
+  any candidate.
+Nothing blocks; #41 stays a discussion for Will.
