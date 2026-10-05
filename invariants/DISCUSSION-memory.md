@@ -167,7 +167,8 @@ Three options, in order:
    and the M5 target ("fewer fetch-backs") can then be met by fetching less, a false green.
    Negatives need a label source that doesn't depend on the model noticing: trace every
    §6 continuity-quiz miss back to the evicted unit that held the answer, and apply Foil's
-   negative-claim rule (#21): any "X doesn't exist / never happened" in a turn triggers a
+   negative-claim rule (proposed in #21, still OPEN, so Hearth doesn't have it yet, and M5
+   depends on it landing or on the quiz alone): any "X doesn't exist / never happened" in a turn triggers a
    transcript search, and a hit in an evicted unit is a positive the model missed. Until
    that source exists, "never fetched" is UNLABELLED, not negative, and the M5 metric is
    fetch-backs **plus** quiz misses at equal context size.
@@ -199,8 +200,9 @@ consolidation`), so its cost lands in the same ledger as everything else (Foil).
 
 **Foil's data (§7.1, lifetime, Foil's store, 2026-10-05):** background review is 210 of
 1,770 calls (11.9%) and 56.8M of 445M cache reads (12.7%), but only 3.3% of cache writes.
-It re-reads the whole conversation after every turn, which a nightly job wouldn't, so the
-saving is larger than the 12% headline.
+It re-reads the whole conversation after every turn, which a nightly job wouldn't, so Foil
+believes the saving is larger than the 12% headline [believe, not modelled; the Buster
+week measures it].
 
 What per-turn has that nightly loses (Foil, accepted): **cross-session latency**. A skill
 written at 21:20 is usable by a concurrent session at 21:21; nightly delivers it tomorrow.
