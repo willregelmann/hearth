@@ -192,12 +192,16 @@ on usage credits, an API key or a cloud provider. Buster runs on Will's Max loan
 ### C2. The L2 cost risk, which is the one Ash asked about [believe, with one read fact]
 
 "turn stops passing --resume; each turn builds the prompt from Hearth's store" means each turn is a
-fresh `-p` session whose history arrives as one new prompt. A fresh session always writes the cache
-(home/turn's own comment, line 41). So every turn pays a full cache WRITE of the whole rebuilt
-history, where a resumed session pays a cache READ of it. At API rates a read is about a tenth of
-base input and a 1h write about twice base [believe]. That's roughly 20x on every history token,
-every turn. "Evict only at cold boundaries" doesn't save this: the loss comes from the rebuild, not
-from the eviction. Two consequences:
+fresh `-p` session whose history arrives as one new prompt. The API cache is keyed on the request
+prefix, not the session. But last turn's request was [history as messages, then reply], and this
+turn's is [history flattened into a new prompt], so the two prefixes stop matching early, at the
+first message. In practice that's a full cache WRITE of the whole rebuilt history every turn, where
+a resumed session pays a cache READ of it. (home/turn line 41 says "a fresh session always writes
+the cache". I don't know what that was measured with. If the prefix is reproduced byte for byte,
+it shouldn't be true.) At API
+rates a read is about a tenth of base input and a 1h write about twice base [believe]. That's
+roughly 20x on every history token, every turn. "Evict only at cold boundaries" doesn't save this:
+the loss comes from the rebuild, not from the eviction. Two consequences:
 
 1. **Prefix stability is an invariant, not an optimisation.** Whatever L2 sends must be
    byte-identical to the previous turn's request up to the first changed unit. Everything that
