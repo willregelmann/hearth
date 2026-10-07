@@ -160,7 +160,9 @@ substitute our own summary into its session. So replacing it means Hearth owns t
 - **L0, tune the window** (stopgap, now). Measured on Hermes, not Claude Code: lowering
   Wren's compaction trigger from ~500k to 200k on 2026-10-06 halved her peer conversation's
   re-read context per call (292,639 to 145,123 tokens, 6,254 calls before, 949 calls in the
-  24h after). The step lands in the hour of the config edit and holds.
+  24h after). The step lands in the hour of the config edit and holds That's close to
+  arithmetic (a smaller cap means a smaller average prompt), and it omits the extra
+  compaction calls and any recall loss, neither measured (Foil C5).
 - **L1, steer the summariser**: dropped as a target. It still runs Claude Code's narrative
   summary, the thing §3.2 argues against.
 - **L2, Hearth's own context manager (the target).** `turn` stops passing `--resume` for
@@ -174,6 +176,44 @@ substitute our own summary into its session. So replacing it means Hearth owns t
   differs from the last one. §3.2's cold-boundary rule (evict only when the cache has
   already expired) is what keeps L2 from costing more than Claude Code's own compaction. The
   ledger measures it from the first turn.
+
+**Cache TTL on Buster (Foil C1, condition for this section).** §3.2's "5-minute cache"
+premise is wrong for Buster. On a Claude subscription within plan usage, Claude Code
+requests the **one-hour** TTL for the main conversation, `-p` included [docs:
+prompt-caching, "Which TTL each request gets"]. [measured: every cache write in the probe
+above was `ephemeral_1h_input_tokens`, `ephemeral_5m` 0.] So a cold boundary on Buster is
+a gap of over an hour, and a miss pays the higher 1h write rate. Two changes follow: pin
+the TTL in turn's `--settings` (`promptCacheTtl`), so going over the plan's usage doesn't
+silently drop it to 5m; and have the ledger record `usage.cache_creation.ephemeral_1h/5m`,
+because today it can't tell which TTL was paid.
+
+**L2 has a cheaper form, and it works (Foil C2b).** Rebuilding the prompt without
+`--resume` would turn every turn's history from a cache read into a cache write. Instead,
+Hearth can edit Claude Code's own session transcript (`~/.claude/projects/*/<id>.jsonl`)
+at eviction time and keep `--resume`-ing it. [measured, 2.1.289: a session told codeword
+HERON42; a separate process rewrote that user row to a stub plus OSPREY77; `--resume`
+accepted the edited file, kept the same session id, and answered OSPREY77. The cache was
+re-read up to the system prompt (12,382) and re-written from the edit (15,079).] So an
+eviction costs one rewrite from the first edited row on, and nothing on turns with no
+eviction. Unknowns: whether a mid-turn edit races Claude Code's own writes (evict only
+between turns, under turn's lock), and whether a future version stops honouring an edited
+transcript (turn-controls should assert that).
+
+Open items from Foil's review, not decided here:
+- **C2a, a prefix-stability invariant.** L2's same-session cache_read share must be at
+  least M1's, tested from the ledger. Anything that changes per turn goes after the stable
+  part.
+- **C3, the hard limit (Will's call, with Ash).** With Claude Code's compaction disabled, a
+  long agentic turn that hits the context limit fails mid-work. Ash leans to Foil's
+  fallback: keep Claude Code's compaction as an in-turn safety net only, and count every
+  PostCompact as an L2 miss. A failed request loses half-done work; a counted fallback is
+  visible. This reverses "vetoed and disabled" above.
+- **C4, where the switch lives.** Whatever disables or vetoes compaction rides in turn's
+  `--settings` (env block included), not the process env, because a tenant settings.json
+  `env` overrides the process env (measured on #48). `disableAllHooks: false` in
+  `--settings` is unmeasured.
+- **Session identity.** M4's cost gate compares per conversation; with `--resume` kept, the
+  Claude Code session id still serves.
 
 ### 3.4 Jev (Will's suggestion), what it is and where it fits
 
@@ -239,7 +279,8 @@ learned scorer reduce fetch-backs plus quiz misses at equal context size?"
 e4d2c2dd, 2026-10-05).** Every noticed recall miss kept for pass 1 (5 of 5, after two
 pre-registered exclusions; blind second labeller agreed 6 of 7 before them) was **S**: the
 answer existed in this agent's own store, in *another of its own sessions*, but outside the
-default search scope. None was a ranking failure (R = 0), so M6 has no decision. Caveats:
+default search scope. All 7 candidate rows came from Ash's store alone, and both exclusions
+were flagged during labelling under the pre-registered criteria (Foil C5). None was a ranking failure (R = 0), so M6 has no decision. Caveats:
 n = 5, noticed misses only, and 5/5 is partly an artefact of excluding the disputed row.
 Consequence for priority: widen scope before improving ranking. That means this section's
 nightly consolidation, or a default cross-session search, comes before M6's retriever.
