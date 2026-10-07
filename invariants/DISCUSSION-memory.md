@@ -125,22 +125,55 @@ cold-boundary eviction is free only if the new, shorter prefix is then **reused*
 session goes cold again before the next turn, the rewrite was paid for nothing. Count
 that, so "free" is measured rather than assumed.
 
-### 3.3 Can we do better than Claude Code? Where the knobs are
+### 3.3 Replacing Claude Code's compaction (Will, 2026-10-06: the goal)
 
-Claude Code exposes `--autocompact <auto|tokens>` (window 100k–1M) [measured: `claude
---help`, 2.1.288], plus PreCompact hooks and `/compact` with instructions [literature;
-unchecked on this version]. So the threshold is ours to tune today. The *method* isn't:
-Claude Code's compaction is the model summarising itself.
+Will, 2026-10-06: "our goal is to develop something better than Claude's compaction - we
+should replace it in our harness." So L2 below is the target, not the fallback. L0 is a
+stopgap and L1 is optional.
 
-Three levels of ambition, each a separate red-to-green:
+**What Claude Code lets a harness do** [measured 2026-10-07, claude 2.1.289, `claude -p`
+with `--resume`, Sonnet 5.5, `CLAUDE_CODE_AUTO_COMPACT_WINDOW=100000`, a PreCompact and a
+PostCompact hook passed in `--settings`; probe dir
+`hearth-notes/cc-compact-probe.qQ3Q`, six ~27k-token chunks then a recall question]:
 
-- **L0, tune the threshold:** one number, measured against the ledger (cost per turn vs.
-  compactions per day). Hours of work.
-- **L1, steer what's kept:** a PreCompact hook injects the "keep verbatim / stub with
-  pointer" rules into Claude Code's own summariser. Days.
-- **L2, our own context manager:** run turns through the Agent SDK, or keep the transcript
-  ourselves and rebuild the prompt, applying §3.2. That's the real "better than Claude
-  Code", and it's a larger build. Only worth it if L0/L1 measure short.
+| Arm | Hook | Prompt size per call (tokens) | Compactions | Recall of chunk 1 |
+|---|---|---|---|---|
+| A | logs only | 54k, 81k, 50k, 55k, 55k, 50k, 56k, 56k | 4 (Pre+Post each) | correct |
+| C | PreCompact exits 2 | 54k, 81k, 109k, 136k, 163k, 190k, 190k | 0 (6 vetoed) | correct |
+
+1. **A PreCompact hook can veto auto-compaction**, and the session simply continues
+   uncompacted, with no error, at least while the real context window has room. Six of six
+   vetoes held. The docs add, unmeasured here: a veto at the hard context limit fails the
+   request instead.
+2. **PostCompact hands us Claude Code's own summary** (`compact_summary`), so we can log
+   every compaction it does and compare it against ours, even before we replace it.
+3. **The window is ours to set**: `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (env, beats every
+   settings scope), `--autocompact`, or `autoCompactWindow`. `DISABLE_COMPACT=1` turns off
+   both auto and manual compaction; `DISABLE_AUTO_COMPACT=1` turns off auto only [docs].
+4. A first, blunter probe (two 200k chunks) blocked "compaction" with the veto too, but a
+   transcript with no compact marker showed it was the PreCompact *signal* that fired, not a
+   finished compaction. That's why arm A's counts above come from PostCompact, not PreCompact.
+
+**What that means for the design.** Claude Code gives us a veto and a window, not a way to
+substitute our own summary into its session. So replacing it means Hearth owns the context:
+
+- **L0, tune the window** (stopgap, now). Measured on Hermes, not Claude Code: lowering
+  Wren's compaction trigger from ~500k to 200k on 2026-10-06 halved her peer conversation's
+  re-read context per call (292,639 to 145,123 tokens, 6,254 calls before, 949 calls in the
+  24h after). The step lands in the hour of the config edit and holds.
+- **L1, steer the summariser**: dropped as a target. It still runs Claude Code's narrative
+  summary, the thing §3.2 argues against.
+- **L2, Hearth's own context manager (the target).** `turn` stops passing `--resume` for
+  long conversations. Hearth keeps the transcript itself (it already has the ledger and the
+  per-session jsonl), and each turn builds the prompt from it by §3.2: verbatim recent
+  tail, scored units, stubs with pointers, the supersession list, and the recall tool from
+  M2 for fetch-backs. A PreCompact veto plus `DISABLE_AUTO_COMPACT=1` in turn's root-owned
+  env is the backstop that stops Claude Code's own compaction ever running underneath ours,
+  with the hard-limit failure (point 1) as the loud signal that our manager fell behind.
+- **Cost, the open risk.** A prompt rebuilt each turn loses the prompt cache wherever it
+  differs from the last one. §3.2's cold-boundary rule (evict only when the cache has
+  already expired) is what keeps L2 from costing more than Claude Code's own compaction. The
+  ledger measures it from the first turn.
 
 ### 3.4 Jev (Will's suggestion), what it is and where it fits
 
@@ -201,6 +234,16 @@ learned scorer reduce fetch-backs plus quiz misses at equal context size?"
 ## 4. Consolidation: hippocampus to cortex
 
 ### 4.1 Sleep, not waking replay
+
+**Measured input (miss-attribution study, `hearth-notes/miss-attribution/`, rule rev 12
+e4d2c2dd, 2026-10-05).** Every noticed recall miss kept for pass 1 (5 of 5, after two
+pre-registered exclusions; blind second labeller agreed 6 of 7 before them) was **S**: the
+answer existed in this agent's own store, in *another of its own sessions*, but outside the
+default search scope. None was a ranking failure (R = 0), so M6 has no decision. Caveats:
+n = 5, noticed misses only, and 5/5 is partly an artefact of excluding the disputed row.
+Consequence for priority: widen scope before improving ranking. That means this section's
+nightly consolidation, or a default cross-session search, comes before M6's retriever.
+Pass 2 (≈2026-10-12) tests whether the pattern holds.
 
 [proposal] Move consolidation off the per-turn path into **one nightly job** per agent. It
 reads the day's transcripts and:
@@ -273,12 +316,16 @@ actually cited in the reply.
 
 1. **M0, ledger only (now):** memory ABSENT. The baseline cost per turn and the compaction
    rate at Claude Code defaults.
-2. **M1, threshold:** tune `--autocompact` against the M0 baseline.
+2. **M1, threshold (stopgap):** set the window in turn's env against the M0 baseline, and
+   log every Claude Code compaction via PostCompact so M4 has something to beat.
 3. **M2, hippocampus:** an index over Buster's transcripts (session, turn, identifiers) and
    a `recall` tool that returns verbatim lines by pointer. No summaries yet.
 4. **M3, cortex:** Tapestry facts, written only by the nightly consolidation, each with a
    citation.
-5. **M4, forgetting:** the PreCompact rules (L1), with eviction + fetch-back logging.
+5. **M4, forgetting (replaces Claude Code's compaction):** Hearth builds each prompt from
+   its own transcript store by §3.2 (L2 in §3.3), with eviction + fetch-back logging.
+   Claude Code's auto-compaction is vetoed by a PreCompact hook and disabled in turn's env.
+   Gate: same or better on the §6 continuity quiz than the M1 logs, at no more ledger cost.
 6. **M5, scorer:** the heuristic vs. Jev vs. an open head, decided on the M4 log.
 7. **M6, a retriever of its own** (Will, 2026-10-05: "what if each agent got to fine tune
    its own memory retrieval?"). Each agent fine-tunes the small retrieval model only (an
