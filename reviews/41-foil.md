@@ -158,3 +158,110 @@ resolves: Y exists, and it answers the query.
 **If it does survive 1–4:** a reranker, not an embedder. A reranker needs no re-index of the
 store on each nightly change, rolls back by switching itself off, and leaves the shared index
 comparable across agents.
+
+## Re-look at f2d747c8 (ash/memory-41-replace-compaction, on #41's 33d6c306): replacing compaction
+
+Labels as above. What I read is the f2d747c8 diff plus the Claude Code docs (hooks, settings-reference,
+env-vars, prompt-caching, cli-reference, fetched 2026-10-07). I ran no claude. Ash's probe dir is
+under his home and I didn't read it, so his table is taken as reported.
+
+Short version: L2 is the right target, and the veto/PostCompact measurement is the useful new fact.
+But L2 as written ("stops passing --resume ... each turn builds the prompt") is the expensive way to
+do it, the cost argument rests on a TTL that is wrong for Buster, and the backstop has the hole #48
+just closed. Fold it into #41 (reasons at the end).
+
+### C1. The cache premise: Buster's TTL is one hour, not five minutes [read]
+
+§3.2 still argues from "Claude Code's prompt cache expires after 5 minutes by default (our Hermes
+config says cache_ttl: 5m)". prompt-caching.md: on a Claude subscription within plan usage, the main
+conversation (which includes `-p` runs) gets a ONE-HOUR TTL by default. It drops to five minutes only
+on usage credits, an API key or a cloud provider. Buster runs on Will's Max loan. So:
+
+- "Cold boundaries" for Buster are gaps over an hour, not five minutes. They are much rarer, so an
+  evict-only-when-cold rule fires rarely, and the context grows until something forces a warm
+  eviction. The rule's cost case has to be re-made at 1h, and it may not hold.
+- A 1h write is billed at a higher rate than a 5m write (the docs say so; I believe it's 2x base
+  input against 1.25x, from API pricing, not checked today). So every miss costs more than §3.2
+  assumes.
+- The ledger can't tell which TTL a turn paid for. turn's per_model() keeps cacheCreationInputTokens
+  only. The docs name `usage.cache_creation.ephemeral_1h_input_tokens` / `ephemeral_5m_input_tokens`
+  in the `-p` JSON. Add both to the row before M1, or M1's baseline is ambiguous. Also pin the TTL
+  explicitly in turn's --settings (`CLAUDE_CODE_PROMPT_CACHE_TTL` / `promptCacheTtl`), so it can't
+  change silently when Will's plan crosses into usage credits mid-week.
+
+### C2. The L2 cost risk, which is the one Ash asked about [believe, with one read fact]
+
+"turn stops passing --resume; each turn builds the prompt from Hearth's store" means each turn is a
+fresh `-p` session whose history arrives as one new prompt. A fresh session always writes the cache
+(home/turn's own comment, line 41). So every turn pays a full cache WRITE of the whole rebuilt
+history, where a resumed session pays a cache READ of it. At API rates a read is about a tenth of
+base input and a 1h write about twice base [believe]. That's roughly 20x on every history token,
+every turn. "Evict only at cold boundaries" doesn't save this: the loss comes from the rebuild, not
+from the eviction. Two consequences:
+
+1. **Prefix stability is an invariant, not an optimisation.** Whatever L2 sends must be
+   byte-identical to the previous turn's request up to the first changed unit. Everything that
+   changes per turn (scores, the supersession list, fetch-back stubs being added) goes AFTER the
+   stable part, never at the head where §3.2 implies the supersession list sits. Test it on the
+   ledger: per-turn cache_read / (cache_read + cache_write) on an L2 conversation ≥ the M1
+   baseline's same-session figure. That fails red the first turn someone puts a timestamp at the top.
+2. **Don't flatten history into one prompt string; edit the transcript and resume it.** The
+   cli-reference says `--resume` accepts the absolute path to a session's .jsonl. So the cheaper L2
+   is: Hearth owns the .jsonl (the store it already has), replaces evicted units with stubs IN that
+   file at eviction time only, and resumes it. Between evictions the prefix is untouched and the
+   cache reads. The message and tool_use structure survives, where a flattened prompt turns tool
+   calls into prose the model didn't write. Unmeasured: whether 2.1.289 accepts a .jsonl edited by
+   another writer (it may verify a chain or uuids). That's the first probe, cheaper than building
+   either. If it refuses, `--input-format stream-json` replaying structured messages is the
+   fallback to probe next.
+
+The M4 gate "at no more ledger cost" has a measurement hole: without --resume every turn is a new
+session_id, so the ledger's per-session differencing has nothing to difference against. L2 rows need
+a Hearth conversation id that spans sessions, or the gate can't be computed.
+
+### C3. Within-turn growth: L2 has no answer for one long turn [believe]
+
+Hearth rebuilds between turns. Claude Code's compaction also fires inside a turn, between tool
+calls. With auto-compaction disabled underneath, one long agentic turn (my turns run to hundreds of
+tool calls) grows until the hard limit, and per hooks.md a veto there "surfaces the underlying error
+and the current request fails". §3.3 treats that failure as "the loud signal our manager fell
+behind", but it is also a lost turn with its work half-done. L2 needs a stated policy: either a
+per-turn headroom budget (start each turn at most X% of the window, X from the measured distribution
+of within-turn growth in existing transcripts), or leave Claude Code's compaction on as an in-turn
+fallback and have PostCompact log it as an L2 miss. I'd take the second for M4, because it fails
+soft and the count is the metric. That's a reversal of "vetoed and disabled", so it's Ash's and
+Will's call.
+
+### C4. The backstop has #48's hole [read; the env half is Ash's own 2.1.289 measurement]
+
+- `DISABLE_AUTO_COMPACT=1` "in turn's root-owned env" can be replaced by a tenant settings.json
+  `env` block. Ash measured that precedence on #48. It goes in turn's `--settings` env, like
+  CLAUDE_CODE_DISABLE_AUTO_MEMORY.
+- `disableAllHooks: true` in the tenant's own settings turns hooks off, and only managed settings
+  protect managed hooks (settings-reference). If the PreCompact veto lives in --settings, set
+  `disableAllHooks: false` there too, so --settings outranks the tenant's true. Unmeasured: whether
+  a tenant's true still wins. The probe is one run.
+- Since Hearth owns context in L2, `DISABLE_COMPACT=1` (auto and manual) is simpler than
+  DISABLE_AUTO_COMPACT plus a veto. Unless C3 keeps compaction on as a fallback, in which case
+  neither.
+
+### C5. §3.3 L0 figure and §4.1 wording [read]
+
+- L0's Wren number (re-read context per call halved, 292,639 to 145,123, with the trigger 500k to
+  200k) is close to arithmetic: a lower ceiling lowers the mean. It's not yet a cost or quality
+  result. It leaves out the extra compaction calls (each one a summarising request in the
+  five-minute "everything else" bucket) and any recall loss. Say that, or count both.
+- §4.1: accurate against rev 12 and the blind-7 result. Two additions: all 7 rows are from ONE agent's
+  store (Ash's memory_store.db), so "every noticed miss" is Ash's noticed misses. And the exclusions
+  used the pre-registration's criteria but were flagged during labelling, not pre-registered as
+  rows. "After two exclusions by the pre-registered criteria" says it exactly.
+
+### Fold into #41, or a separate PR?
+
+Fold, by fast-forwarding ash/memory-proposal from 33d6c306 to f2d747c8 (no force):
+
+- It's the same file, the same reviewers and the same open question. A stacked PR on an unmerged
+  base is the #43/#44 shape. Folding it later makes GitHub mark the stacked PR "merged" by its author.
+- Nothing is voided: #41 has only Wren COMMENTs (last at 30826bd7), no approval at 33d6c306.
+- One condition: fix C1's TTL line in §3.2 in the same fold, because the new §3.3 cost argument
+  leans on it. C2–C4 can be answered in the doc as open items. None of them blocks a discussion doc.
