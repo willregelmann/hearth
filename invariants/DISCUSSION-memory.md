@@ -154,24 +154,34 @@ PostCompact hook passed in `--settings`; probe dir
    transcript with no compact marker showed it was the PreCompact *signal* that fired, not a
    finished compaction. That's why arm A's counts above come from PostCompact, not PreCompact.
 
-**What that means for the design.** Claude Code gives us a veto and a window, not a way to
+These are capabilities, recorded as measured. **L2 uses neither the veto nor the disable
+switches** (C3 below): Claude Code's compaction stays on as a counted fallback.
+
+**What that means for the design.** Claude Code gives us a window and two hooks, not a way to
 substitute our own summary into its session. So replacing it means Hearth owns the context:
 
 - **L0, tune the window** (stopgap, now). Measured on Hermes, not Claude Code: lowering
-  Wren's compaction trigger from ~500k to 200k on 2026-10-06 halved her peer conversation's
-  re-read context per call (292,639 to 145,123 tokens, 6,254 calls before, 949 calls in the
-  24h after). The step lands in the hour of the config edit and holds That's close to
-  arithmetic (a smaller cap means a smaller average prompt), and it omits the extra
-  compaction calls and any recall loss, neither measured (Foil C5).
+  Wren's compaction trigger from ~500k to 200k (config edit 2026-10-06 12:33 EDT) halved her
+  peer conversation's re-read context per call: **300,219 tokens/call over 1,107 calls in
+  the 48h before, 145,123 over 949 calls in the 24h after.** Source: the hourly usage
+  snapshots on the workstation (`~/.hermes/usage-snapshots.jsonl`, which copy each box's
+  cumulative `session_model_usage` counters every hour), filtered to Wren's session titled
+  "Peer: ash" with no `task` (so `background_review` is excluded), differenced between
+  snapshots. The per-hour step is visible there and not in `state.db`, which is cumulative
+  only. *Correction (Wren C-W2, 2026-10-08):* f2d747c8 stated "292,639, 6,254 calls before".
+  That was the session's lifetime total up to 10-06, not a 48h window, because the first
+  snapshot had no Wren rows and the difference ran from zero. The halving survives the
+  correction. That's close to arithmetic (a smaller cap means a smaller average prompt),
+  and it omits the extra compaction calls and any recall loss, neither measured (Foil C5).
 - **L1, steer the summariser**: dropped as a target. It still runs Claude Code's narrative
   summary, the thing §3.2 argues against.
 - **L2, Hearth's own context manager (the target).** `turn` stops passing `--resume` for
   long conversations. Hearth keeps the transcript itself (it already has the ledger and the
   per-session jsonl), and each turn builds the prompt from it by §3.2: verbatim recent
   tail, scored units, stubs with pointers, the supersession list, and the recall tool from
-  M2 for fetch-backs. A PreCompact veto plus `DISABLE_AUTO_COMPACT=1` in turn's root-owned
-  env is the backstop that stops Claude Code's own compaction ever running underneath ours,
-  with the hard-limit failure (point 1) as the loud signal that our manager fell behind.
+  M2 for fetch-backs. Claude Code's own compaction stays on underneath as an in-turn,
+  last-resort fallback, and every time it fires (a PostCompact) counts as an L2 miss (C3,
+  decided below).
 - **Cost, the open risk.** A prompt rebuilt each turn loses the prompt cache wherever it
   differs from the last one. §3.2's cold-boundary rule (evict only when the cache has
   already expired) is what keeps L2 from costing more than Claude Code's own compaction. The
@@ -199,19 +209,67 @@ eviction. Unknowns: whether a mid-turn edit races Claude Code's own writes (evic
 between turns, under turn's lock), and whether a future version stops honouring an edited
 transcript (turn-controls should assert that).
 
+**Eviction mechanics.**
+- **Batch, don't drip (Foil).** An eviction rewrites the cache from the first edited row to
+  the end, and evicting the oldest units edits near the head, so each eviction costs close
+  to a full-history cache write. So: evict rarely and in batches, at a boundary colder than
+  the 1h TTL, or when headroom forces it, never one unit per turn. Fetch-backs append at the
+  tail and stay cheap. The ledger checks this: an eviction's cost is the next turn's
+  `cache_write`.
+- **How Claude Code writes the transcript** [measured, strace, 2.1.289, one `-p` turn]: it
+  opens `<sid>.jsonl` by path for each write batch (`O_APPEND`, plus one `O_CREAT|O_EXCL`
+  at creation), never renames it, and a 1s fd sampler over a 10s turn never saw it held
+  open. So writing a temp file and renaming it over the transcript is safe from a writer
+  holding the old inode, and the remaining hazard is a **lost update**: a writer that opens
+  the path just before the rename and writes just after it lands in the old, unlinked file.
+- **Rule:** L2 transcripts are only ever resumed via turn, under turn's lock; check
+  enforces it. An interactive `claude --resume`, or check's own probe until #46, bypasses
+  the lock.
+- **Lost-update detector, for whatever bypasses the rule (Foil, plus Ash).** turn is one
+  process per turn, so it can't hold an fd across turns. Instead the editor hard-links the
+  original to `<sid>.jsonl.pre-evict-<ts>` (0600, same directory) before the rename,
+  records the size it read, and compares the link's size twice: right after the rename,
+  and at the start of the next turn under turn's lock, before `--resume`. Claude only
+  appends, so growth means a write was lost: fail loudly, then re-run the eviction from the
+  current file. If no growth, delete the link. [measured, local simulation of the race: a
+  clean eviction leaves the link at the read size (16 bytes, no fire); a writer that opened
+  the path before the rename and wrote after it grew the link to 24 bytes (fired), and the
+  new transcript lacked that write, so the loss was real and caught.]
+- **Integrity on resume (Wren, as a turn-control assertion, not a note).** Anything that
+  can write `<sid>.jsonl` can change what the model believes it was told. turn records the
+  transcript's hash after each turn and each eviction, and refuses to `--resume` on a
+  mismatch.
+
 Open items from Foil's review, not decided here:
 - **C2a, a prefix-stability invariant.** L2's same-session cache_read share must be at
   least M1's, tested from the ledger. Anything that changes per turn goes after the stable
   part.
-- **C3, the hard limit (Will's call, with Ash).** With Claude Code's compaction disabled, a
-  long agentic turn that hits the context limit fails mid-work. Ash leans to Foil's
-  fallback: keep Claude Code's compaction as an in-turn safety net only, and count every
-  PostCompact as an L2 miss. A failed request loses half-done work; a counted fallback is
-  visible. This reverses "vetoed and disabled" above.
-- **C4, where the switch lives.** Whatever disables or vetoes compaction rides in turn's
-  `--settings` (env block included), not the process env, because a tenant settings.json
-  `env` overrides the process env (measured on #48). `disableAllHooks: false` in
-  `--settings` is unmeasured.
+- **C3, the hard limit: DECIDED.** Will, 2026-10-07, on keeping Claude Code's compaction
+  as a counted fallback rather than switching it off: *"Agree with your recommendation."*
+  So Claude Code's compaction is **not** blocked or disabled anywhere in L2. It fires only
+  if Hearth's manager has let the context reach the window, and each firing is an L2 miss.
+  Reason: with it off, a long agentic turn that reaches the context limit fails mid-work
+  and loses that work (the docs say the same of a PreCompact block at the hard limit, so a
+  "proactive-only" block is ruled out too). A counted fallback is visible and recoverable.
+  Wren adds: a miss must be **loud in the artefact**, not only in the log. turn prints it
+  in its result line, and check reports the count.
+- **C4, what turn pins, and the counter that must be able to fail.** turn's `--settings`
+  carries three things the tenant can't override, because a tenant `settings.json` `env`
+  replaces the process env (measured on #48):
+  1. **The fallback window, pinned at 200,000 tokens** (`CLAUDE_CODE_AUTO_COMPACT_WINDOW`
+     in the `--settings` env block). Why 200k: it is the trigger already measured to work
+     on Hermes (L0), it sits far below Sonnet 5.5's ~967k default, so a miss is cheap, and
+     L2's own budget must sit below it (target: evict by 150k) so the fallback fires only
+     when L2 fell behind. The counter probe uses the same 200,000. The 100,000 in the probe
+     above was only for speed and isn't a production value.
+  2. **The PostCompact counting hook**, which writes one ledger event per firing.
+  3. **`disableAllHooks: false`**, since a tenant's `disableAllHooks: true` would silently
+     zero the miss count. Whether `--settings` wins over a tenant's `true` is
+     **unmeasured**; turn-controls must test it.
+
+  The counter must be able to fail: a turn-controls arm drives a session past 200,000
+  tokens with L2 eviction off and must show a nonzero PostCompact count on the ledger. The
+  negative control (stay under the window) must show zero.
 - **Session identity.** M4's cost gate compares per conversation; with `--resume` kept, the
   Claude Code session id still serves.
 
@@ -365,7 +423,7 @@ actually cited in the reply.
    citation.
 5. **M4, forgetting (replaces Claude Code's compaction):** Hearth builds each prompt from
    its own transcript store by §3.2 (L2 in §3.3), with eviction + fetch-back logging.
-   Claude Code's auto-compaction is vetoed by a PreCompact hook and disabled in turn's env.
+   Claude Code's compaction stays on as a counted in-turn fallback (C3).
    Gate: same or better on the §6 continuity quiz than the M1 logs, at no more ledger cost.
 6. **M5, scorer:** the heuristic vs. Jev vs. an open head, decided on the M4 log.
 7. **M6, a retriever of its own** (Will, 2026-10-05: "what if each agent got to fine tune
