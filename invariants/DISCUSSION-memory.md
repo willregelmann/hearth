@@ -173,6 +173,18 @@ substitute our own summary into its session. So replacing it means Hearth owns t
   snapshot had no Wren rows and the difference ran from zero. The halving survives the
   correction. That's close to arithmetic (a smaller cap means a smaller average prompt),
   and it omits the extra compaction calls and any recall loss, neither measured (Foil C5).
+  *Confound, bounded (Wren, 2026-10-08):* the window contains a model change. That session
+  ran `claude-opus-5` (7,579 calls, 266,532 re-read/call) and `claude-opus-5-5` (114 calls,
+  165,828 re-read/call, first seen 10-01, i.e. before the edit). opus-5-5 is ~38% cheaper
+  per call, so a reader can fairly ask whether L0 measured the threshold or a model mix.
+  Worst case — all 114 opus-5-5 calls landing after the edit, 12% of the 949 — mix alone
+  predicts 254,435 against the observed 145,123, so it explains 12,097 of the 155,096 drop:
+  **~8%, and that over-states it** because some of those calls precede the edit. The
+  halving survives. This is a *ceiling, not an estimate*, and it cannot be tightened:
+  `session_model_usage` carries per-model lifetime counters with only `first_seen`/
+  `last_seen` and no time series, and the hourly snapshots group by session and task
+  **without model** (9 fields, no model string in any of 101 snapshots). So per-call model
+  attribution over time exists on neither box, and ~8% is the permanent bound.
 - **L1, steer the summariser**: dropped as a target. It still runs Claude Code's narrative
   summary, the thing §3.2 argues against.
 - **L2, Hearth's own context manager (the target).** `turn` stops passing `--resume` for
