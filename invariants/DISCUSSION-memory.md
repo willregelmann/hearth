@@ -248,7 +248,22 @@ transcript (turn-controls should assert that).
   then would leave the second check with nothing to compare (Foil). A **missing** link
   fails loudly; it never counts as "no growth", because a deleted link and an untouched
   one are otherwise indistinguishable (Ash). Scope: the tenant owns the directory and can
-  delete or replace the link, so this is an accident detector, not tenant-proof. [measured, local simulation of the race: a
+  delete or replace the link, so this is an accident detector, not tenant-proof. **Who
+  deletes a link whose session never takes another turn (Wren):** the next-turn check is the
+  only thing that removes a link, and §3.2 already allows a session to go cold
+  before its next turn ("if the session goes cold again before the next turn") — on that
+  path the link, and with it the full pre-eviction
+  transcript, persists with nothing sweeping it. So turn's **startup sweep** deletes any
+  `*.pre-evict-*` link whose session has had no turn for the cold threshold, logging it as
+  an unverified eviction rather than a pass: the second comparison never ran, so the
+  lost-update question stays open for that eviction instead of being silently closed. This
+  matters most in the headroom-forced case, which is also the case most likely to be
+  followed by the session going cold. [measured, this filesystem: a hard link keeps the
+  pre-eviction inode's blocks allocated, so between the rename and the link's deletion
+  eviction reclaims **nothing** — a 4 MiB transcript evicted to 64 KiB left `sess.jsonl` at
+  64 KiB on a new inode and the link at 4,096 KiB on the old one, with free space 64 KiB
+  *lower* than before the eviction; deleting the link returned 4,096 KiB. The link's cost is
+  exactly the bytes eviction set out to drop.] [measured, local simulation of the race: a
   clean eviction leaves the link at the read size (16 bytes, no fire); a writer that opened
   the path before the rename and wrote after it grew the link to 24 bytes (fired), and the
   new transcript lacked that write, so the loss was real and caught.]
