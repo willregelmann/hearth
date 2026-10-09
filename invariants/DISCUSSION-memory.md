@@ -243,14 +243,21 @@ transcript (turn-controls should assert that).
   records the size it read, and compares the link's size twice: right after the rename,
   and at the start of the next turn under turn's lock, before `--resume`. Claude only
   appends, so growth means a write was lost: fail loudly, then re-run the eviction from the
-  current file. If no growth, delete the link. [measured, local simulation of the race: a
+  current file. The link is deleted only after the **next-turn** check passes: a late writer
+  that opened before the rename may not have written yet at the first check, so deleting
+  then would leave the second check with nothing to compare (Foil). A **missing** link
+  fails loudly; it never counts as "no growth", because a deleted link and an untouched
+  one are otherwise indistinguishable (Ash). Scope: the tenant owns the directory and can
+  delete or replace the link, so this is an accident detector, not tenant-proof. [measured, local simulation of the race: a
   clean eviction leaves the link at the read size (16 bytes, no fire); a writer that opened
   the path before the rename and wrote after it grew the link to 24 bytes (fired), and the
   new transcript lacked that write, so the loss was real and caught.]
 - **Integrity on resume (Wren, as a turn-control assertion, not a note).** Anything that
   can write `<sid>.jsonl` can change what the model believes it was told. turn records the
   transcript's hash after each turn and each eviction, and refuses to `--resume` on a
-  mismatch.
+  mismatch. Scope: an **accident detector, not tenant-proof** (Foil). turn runs as the
+  tenant, who can rewrite the hash along with the `.jsonl`, so this catches writers that
+  bypass turn (an interactive resume, a stray probe) and is not custody of the transcript.
 
 Open items from Foil's review, not decided here:
 - **C2a, a prefix-stability invariant.** L2's same-session cache_read share must be at
