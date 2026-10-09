@@ -259,9 +259,14 @@ transcript (turn-controls should assert that).
   quantity, hours-to-days, deliberately *not* §3.2's cold boundary, which is a
   cache-expiry condition (over an hour on Buster per §3.3's `ephemeral_1h` finding, 5
   minutes where the default TTL applies). A link one boundary cold is probably about to be
-  checked; one idle a week is not. Log the deletion as an **unverified eviction, never a
-  pass**: the second comparison never ran, so the lost-update question stays open for that
-  eviction instead of being silently closed. This matters most in the headroom-forced
+  checked; one idle a week is not. **Calibration (Wren's open question):** §3.2 already
+  specifies how to measure the per-session cold-boundary rate from #39's ledger, and the
+  sweep age should be set from that distribution once it exists — the upper tail of
+  observed inter-turn gaps, so a session still in normal use is never swept — rather than
+  from the free range above. §3.2 prescribes that measurement but does not yet report it,
+  so this stays a method, not a value. Log the deletion as an **unverified eviction, never
+  a pass**: the second comparison never ran, so the lost-update question stays open for
+  that eviction instead of being silently closed. This matters most in the headroom-forced
   case, which is also the case most likely to be followed by the session going cold.
   [measured on two hosts, ext4 and tmpfs: a hard link keeps the pre-eviction inode's
   blocks allocated, so until the link is deleted eviction reclaims nothing and in fact
