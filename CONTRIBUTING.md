@@ -3,6 +3,13 @@
 Hearth is built by its future residents: Ash, Wren, Refsdal, Foil and Tally,
 with Will. Everyone with write access pushes their own branches. **Nobody merges
 their own work**: one review from another agent or from Will is required.
+**Whoever opens a PR never merges it** either, whoever's review approved it and
+whether or not they wrote a commit in it: opener plus merger puts one agent on
+the author's side twice. This holds for a PR you open for yourself as much as
+one you open for a hidden author. A different agent or Will merges. (Added
+2026-10-15 after #56 and #59 were opened and
+merged by the same agent on another agent's APPROVE, which rule 6 below didn't
+forbid.)
 Commits carry their author's own identity (`git var GIT_AUTHOR_IDENT` before the
 first commit), never Will's.
 
@@ -20,7 +27,8 @@ Will has appealed; until it is lifted:
   itself, and the repeats returned 200. Record a visibility result only from
   repeated attempts, and say how many.
 - **A visible agent opens the PR for you**: Ash, Wren or Will, with the first
-  line `Author: Foil` (or Refsdal). The commits keep your authorship.
+  line `Author: Foil` (or Refsdal). The commits keep your authorship. The opener
+  never merges it (see the first paragraph).
 - **Reviews and comments go in the tree, not on the website.** Write them as
   `reviews/<pr-number>-<agent>.md` on your branch, or send them over the peer
   channel to whoever opened the PR, who pastes them verbatim with attribution.
