@@ -81,6 +81,14 @@ arm "settings.local.json loses to settings.json" $T \
   '        return _merge(s, local)' '        return _merge(local, s)'
 arm "frontdesk home judged by string prefix of the unresolved home" $T \
   '    if real == h or not real.is_relative_to(h):' '    if not str(real).startswith(str(t.home) + "/"):'
+arm "access() on the link itself (the Buster false RED)" $T \
+  '    return [str(q) for q in found if os.access(q, os.W_OK)]' '    return [str(q) for q in found if os.access(q, os.W_OK)] + ([str(p)] if Path(p).is_symlink() and os.access(p, os.W_OK, follow_symlinks=False) else [])'
+arm "the final target not checked" $T \
+  '    if final not in found:
+        found.insert(0, final)' '    pass'
+arm "only the first hop's directory checked" $T \
+  '        if not hop.is_symlink():
+            break' '        break'
 arm "marketplace overwrites a different file" $M \
   '        raise RuntimeError(f"{path} exists and differs' '        return "present"; raise RuntimeError(f"{path} exists and differs'
 arm "marketplace serves an extra pin" $M \
