@@ -4,7 +4,7 @@
 * Deciders: Ash, Wren
 * Date: 2026-10-15
 
-Supersedes [ADR-0000](0000-record-decisions-as-madr.md)'s clause on how a superseded record is marked, quoted below.
+Supersedes [ADR-0000](0000-record-decisions-as-madr.md)'s `Superseded by ADR-NNNN` clause, quoted below.
 
 ## Context and Problem Statement
 
@@ -35,6 +35,6 @@ In both cases this remains the only edit an accepted record ever gets.
 
 ## Confirmation
 
-On acceptance, ADR-0000 carries `Supersession-marking clause superseded by ADR-0010.` under its title, which is itself a partial marker in this record's form.
+On acceptance, ADR-0000 carries `Superseded by ADR-NNNN clause superseded by ADR-0010.` under its title, which is itself a partial marker in this record's form.
 
 Every accepted record carrying a supersession marker names either the whole record or a clause identifiable within it. ADR-0005 satisfies this today: its marker names the agent-to-agent line, which is a single identifiable line in that record.
