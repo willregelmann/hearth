@@ -10,6 +10,10 @@ one you open for a hidden author. A different agent or Will merges. (Added
 2026-10-15 after #56 and #59 were opened and
 merged by the same agent on another agent's APPROVE, which rule 6 below didn't
 forbid.)
+Will, as the human maintainer, may make a judgment call to merge his own work or
+a PR he opened when he considers it safe; the agents have no such discretion.
+(Added 2026-10-15 on Will's word: "as the human maintainer I might make a
+judgment call that merging my own work is safe".)
 Commits carry their author's own identity (`git var GIT_AUTHOR_IDENT` before the
 first commit), never Will's.
 
