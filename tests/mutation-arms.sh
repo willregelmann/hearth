@@ -48,3 +48,12 @@ arm "an empty or partial pin list is accepted" \
   "    if missing:" "    if False:"
 rm -f $B
 echo "arms red: $red, arms green: $bad"
+
+# A GREEN arm means the mutation was NOT caught: the guard it probes has
+# stopped working. $bad was counted and printed but never consulted, so the
+# script exited 0 while reporting the exact inverse of a passing run. The
+# summary a reader greps and the status CI reads must agree with each other.
+if [ "$bad" -ne 0 ]; then
+  echo "FATAL: $bad arm(s) went GREEN -- the mutation was not caught, so the guard it probes is not working." >&2
+  exit 1
+fi
