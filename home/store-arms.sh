@@ -6,13 +6,13 @@ cd "$(dirname "$0")/.."
 F=home/provision
 bash home/store-controls >/dev/null 2>&1 || { echo "FATAL: store-controls is not green unarmed" >&2; exit 2; }
 B=$(mktemp); cp -p $F $B
-restore() { if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; rm -f "$B"; fi; return 0; }
+restore() { if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F" >&2; rm -f "$B"; fi; return 0; }
 trap restore EXIT
 trap 'restore; echo "INTERRUPTED: restored $F" >&2; exit 130' TERM INT HUP
 red=0; bad=0
 arm() {
   local name="$1" old="$2" new="$3"
-  python3 - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; exit 3; }
+  python3 - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F" >&2; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
 assert s.count(old) == 1, f"anchor not unique: {old!r}"; open(p, "w").write(s.replace(old, new))
 EOF
