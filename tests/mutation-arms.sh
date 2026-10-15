@@ -15,10 +15,29 @@ if ! "$PY" -c 'import sys' >/dev/null 2>&1; then
   echo "FATAL: PY=$PY is not a usable interpreter. Set PY to your venv python." >&2
   exit 2
 fi
-if ! "$PY" -m pytest -q tests/ >/dev/null 2>&1; then
-  echo "FATAL: the UNARMED suite is not green under PY=$PY, so arm results would be meaningless." >&2
+# -I, because this script cd's to the repo root: without isolated mode the cwd
+# supplies ./hearth/ and the import succeeds for ANY interpreter whether the
+# project is installed or not, which makes the check dead code. With -I it
+# discriminates installed from not-installed, and names the common cause in one
+# line where a suite failure only says "not green". Same isolation pins.py uses.
+if ! "$PY" -I -c 'import hearth.pins' >/dev/null 2>&1; then
+  echo "FATAL: $PY cannot import hearth.pins (checked with -I) -- run 'pip install -e .' first." >&2
   exit 2
 fi
+# Capture the output instead of discarding it: a message that states the
+# condition while withholding the reason stops the next person probing. On a
+# deps-less venv the discarded tail is "7 failed, 5 passed" with every failure
+# reading "not installed in", which names the actual cause.
+base_log=$(mktemp)
+"$PY" -m pytest -q -p no:cacheprovider tests/ >"$base_log" 2>&1
+base_rc=$?
+base_out=$(tail -1 "$base_log"); rm -f "$base_log"
+if [ "$base_rc" -ne 0 ]; then
+  echo "FATAL: the UNARMED suite is not green under PY=$PY, so arm results would be meaningless." >&2
+  echo "       pytest: $base_out" >&2
+  exit 2
+fi
+echo "precondition: unarmed suite green ($base_out)"
 F=hearth/pins.py
 B=$(mktemp); cp -p $F $B
 red=0; bad=0
