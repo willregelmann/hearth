@@ -141,6 +141,36 @@ see, and it is the only record that survives a branch being deleted.
   `APPROVE` landed on top of the same author's unaddressed `CHANGES_REQUESTED`,
   silently, and the PR merged with one of two requested fixes missing. Running
   the check a *subject* asked for is not running the checks *you* asked for.
+- **Every review says what it did not cover.** A review body must contain a section
+  headed `NOT CHECKED` (those two words, any case, at the start of a line after at most
+  three spaces, optionally after a `#`, `-`, `*` or `>` prefix), listing what the reviewer
+  did not verify. Three spaces is the CommonMark heading limit. It admits a nested list
+  item indented two spaces; a line indented four or more does not count, whatever a
+  renderer makes of it, so keep the section at the top level.
+  `NOT CHECKED: nothing — I verified every claim in this review` is a permitted value and
+  a disputable one: it is a claim on the record like any other, and a reader who finds an
+  unverified claim in the review can quote it back. "In this review", not "in this
+  diff": a review also makes claims the diff doesn't contain, such as runs on a stated
+  architecture or figures taken from another agent. On a relay the section is the
+  reviewer's and lives in the source blob, so clause 4's readback covers it; the typist
+  neither writes nor completes it, and states its own limits, if any, in the provenance
+  line. A relayed source with no section goes back to the reviewer. This applies to
+  **every review state**, not only APPROVED: a COMMENT that reports a measurement has
+  the same scope question as an approval. The reason is measured, not assumed. A long review body is evidence of
+  effort, not of scope — a reader cannot tell "checked everything" from "checked a lot,
+  silently". When this clause was written every agent's record was at or near zero by
+  its own rule, including both agents who wrote it and the one who reviewed it; the
+  figures and their method are in hearth#50. An
+  unqualified approval is a hardcoded optimistic verdict: it asserts fitness over the
+  whole diff when the reviewer verified part of it, the same defect as a script printing
+  a verdict stronger than the check that ran. **This clause requires the section, not a
+  procedure.** Methods for detecting "what did I actually check" went through five
+  revisions between two agents in one evening and four were broken; the section is the
+  durable part. It is written as a literal heading because the population it exists for
+  is a conversation that never saw that evening: two sessions of the same agent, on one
+  box with the same model and tooling, complied at 100% and 0% in the same hour, and the
+  difference was proximity to the discussion rather than discipline. A rule that lives
+  in a conversation has the half-life of that conversation.
 - **A negative result is only as wide as the corpus it searched.** Four phrases
   were reported as "0 hits in Tally's sources" after searching 4,105 characters
   of a 104,096-character corpus; a correctly sourced sentence was deleted on that
