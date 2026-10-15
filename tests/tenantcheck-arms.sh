@@ -26,7 +26,7 @@ arm() {
   local name="$1" F="$2" old="$3" new="$4" B
   B=$(mktemp); cp -p "$F" "$B"
   CUR_F="$F"; CUR_B="$B"
-  $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; rm -f "$B"; exit 3; }
+  $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F"; rm -f "$B"; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
 assert s.count(old) == 1, f"anchor not unique: {old!r}"; open(p, "w").write(s.replace(old, new))
 EOF
