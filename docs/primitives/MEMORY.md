@@ -12,4 +12,5 @@ Every memory carries two things beside its content: who it came from, and whethe
 - A memory written while one of the agent's [faculties](HOME.md) was missing is marked as written in that state.
 - A correction is linked to what it corrects. Recall never returns a corrected memory as if it still stood.
 - Recall that fails says it failed. The agent is never shown "nothing relevant" when its memory wasn't searched.
+- An agent's claim that it never did, said or saw something names where it looked, or says it didn't look.
 - Each fact carries its audience as part of where it came from, and every later use of it keeps that audience (see [Thread](THREAD.md)).
