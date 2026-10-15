@@ -5,7 +5,7 @@ set -u
 cd "$(dirname "$0")/.."
 bash home/venv-controls >/dev/null 2>&1 || { echo "FATAL: venv-controls is not green unarmed" >&2; exit 2; }
 red=0; bad=0; F=; B=
-restore() { if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; rm -f "$B"; fi; return 0; }
+restore() { if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F" >&2; rm -f "$B"; fi; return 0; }
 trap restore EXIT
 trap 'restore; echo "INTERRUPTED: restored $F" >&2; exit 130' TERM INT HUP
 arm() {
