@@ -8,9 +8,24 @@ PY=${PY:-.venv/bin/python}
 "$PY" -c 'import sys' >/dev/null 2>&1 || { echo "FATAL: PY=$PY is not a usable interpreter" >&2; exit 2; }
 "$PY" -m pytest -q -p no:cacheprovider tests/ >/dev/null 2>&1 || { echo "FATAL: the UNARMED suite is not green under PY=$PY" >&2; exit 2; }
 red=0; bad=0
+# arm()'s cmp-guarded restore sits on its normal path, so a signal between the mutation and
+# the restore leaves the mutated source on disk, where it reads as a real defect in reviewed
+# code. $B is local to arm(), so the in-flight pair is published to CUR_F/CUR_B for the trap.
+# SIGKILL cannot be trapped; this covers TERM/INT/HUP and the ordinary exit paths.
+CUR_F=""; CUR_B=""
+restore() {
+  if [ -n "${CUR_B:-}" ] && [ -f "$CUR_B" ] && [ -n "${CUR_F:-}" ]; then
+    cp -p "$CUR_B" "$CUR_F"; rm -f "$CUR_B"
+  fi
+  CUR_F=""; CUR_B=""
+  return 0
+}
+trap restore EXIT
+trap 'restore; echo "INTERRUPTED: restored the armed source; re-run before trusting any arm result." >&2; exit 130' TERM INT HUP
 arm() {
   local name="$1" F="$2" old="$3" new="$4" B
   B=$(mktemp); cp -p "$F" "$B"
+  CUR_F="$F"; CUR_B="$B"
   $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; rm -f "$B"; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
 assert s.count(old) == 1, f"anchor not unique: {old!r}"; open(p, "w").write(s.replace(old, new))

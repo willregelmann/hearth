@@ -10,6 +10,15 @@ PY=${PY:-.venv/bin/python}
 "$PY" -m pytest -q -p no:cacheprovider tests/ >/dev/null 2>&1 || { echo "FATAL: the UNARMED suite is not green under PY=$PY" >&2; exit 2; }
 F=hearth/plugintree.py
 B=$(mktemp); cp -p $F $B
+# arm()'s cmp-guarded restore sits on its normal path, so a signal between the mutation and
+# the restore leaves $F MUTATED on disk, where it reads as a real defect in reviewed code.
+# SIGKILL cannot be trapped; this covers TERM/INT/HUP and the ordinary exit paths.
+restore() {
+  if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; rm -f "$B"; fi
+  return 0
+}
+trap restore EXIT
+trap 'restore; echo "INTERRUPTED: restored $F; re-run before trusting any arm result." >&2; exit 130' TERM INT HUP
 red=0; bad=0
 arm() {
   local name="$1" old="$2" new="$3"
