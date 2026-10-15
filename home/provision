@@ -191,14 +191,12 @@ fi
 CL=$H/.local/bin/claude
 plug=$H/.claude/plugins
 nolink "$H/.claude" "$plug"
-if tq test -e "$plug/installed_plugins.json" && tq grep -q '"tapestry@hearth"' "$plug/installed_plugins.json" \
-   && tq grep -q '"frontdesk@hearth"' "$plug/installed_plugins.json"; then
-  echo "= plugins installed (check judges them)"
-else
-  as_t "$CL" plugin marketplace add "$MKT"
-  as_t "$CL" plugin install tapestry@hearth
-  as_t "$CL" plugin install frontdesk@hearth
-fi
+# Every run, no skip (Ash #68 S1): a skip keyed on what installed_plugins.json says would trust a
+# tenant-written file. Whether a second `marketplace add` / `install` exits 0 is NOT run; if it
+# doesn't, a re-provision stops here loudly (set -e), which is the safe way to find out.
+as_t "$CL" plugin marketplace add "$MKT"
+as_t "$CL" plugin install tapestry@hearth
+as_t "$CL" plugin install frontdesk@hearth
 if [ $DRY = 1 ]; then echo "+ echo '{\"python\":\"$VENV/bin/python\"}' | $CL plugin configure frontdesk@hearth --values-stdin   (as $T)"
 else printf '{"python":"%s"}\n' "$VENV/bin/python" | sudo -u "$T" -H "$CL" plugin configure frontdesk@hearth --values-stdin \
        || die "plugin configure frontdesk@hearth failed"; fi

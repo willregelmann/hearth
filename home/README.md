@@ -42,9 +42,13 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   desk makes an identity, so provision prints the `frontdesk join` command for Will.
   The inventory changes with it: `memory` is now own (Tapestry), joined by `channel` (Front Desk),
   `channel_home` and `other_plugins`; the old absent row is `cc_memory`, unchanged.
-  `check` judges each plugin with `hearth.tenantcheck`, run from the root venv as the tenant. GREEN
+  `check` judges each plugin with `hearth.tenantcheck`, run from the root venv as the tenant. It
+  reads `~/.claude/settings.json` overridden by `~/.claude/settings.local.json`: `turn` runs claude
+  with cwd=$HOME, so those two are the whole user-and-project pair, and a local file can switch a
+  plugin off (ran by Ash for enabledPlugins on 2.1.288 and 2.1.300; the same merge for `env` and
+  `extraKnownMarketplaces` is read, not run). GREEN
   needs: settings and `known_marketplaces.json` both pointing at exactly /opt/hearth/marketplace;
-  the plugin enabled in user settings; exactly one user-scope install record at
+  the plugin enabled in the merged settings; exactly one user-scope install record at
   `cache/hearth/<name>/<version>`, no link on that path; its tree equal to root's export at the
   current pin, modes included, with only an empty top-level `.in_use` excused; root's side not
   writable by the tenant; and the plugin's interpreter, taken from its config rather than the login
@@ -53,7 +57,7 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   the directory, and the old tree is held to the new export.
   Ran by Ash on claude 2.1.288 (Buster's copy) and 2.1.300 in throwaway configs: the marketplace
   add, both installs, configure. Not yet run on a provisioned tenant. Read, not run: that the env
-  block reaches Tapestry's server, and that nothing outside user settings (managed settings,
+  block reaches Tapestry's server, and that nothing outside ~/.claude settings (managed settings,
   `--plugin-dir`, `CLAUDE_CODE_PLUGIN_CACHE_DIR`) loads another copy; check can't see those.
   `other_plugins` reports anything enabled outside @hearth as KNOWN, not a failure, in v0.
 - Believed, not checked: `DISABLE_AUTOUPDATER` in `~/.claude/settings.json` env stops Claude

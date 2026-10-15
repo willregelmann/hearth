@@ -11,7 +11,7 @@ red=0; bad=0
 arm() {
   local name="$1" F="$2" old="$3" new="$4" B
   B=$(mktemp); cp -p "$F" "$B"
-  $PY - "$F" "$old" "$new" <<'EOF'
+  $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; rm -f "$B"; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
 assert s.count(old) == 1, f"anchor not unique: {old!r}"; open(p, "w").write(s.replace(old, new))
 EOF
@@ -49,13 +49,19 @@ arm "interpreter problems dropped" $T \
 arm "unset frontdesk home passes" $T \
   '        return PENDING, (f"frontdesk home unset' '        return GREEN, (f"frontdesk home unset'
 arm "frontdesk home outside the tenant's home" $T \
-  '    if not str(p.resolve()).startswith(str(t.home) + "/"):' '    if False:'
+  '    if real == h or not real.is_relative_to(h):' '    if False:'
 arm "other plugins silent" $T \
   '        return KNOWN, f"enabled outside' '        return GREEN, f"enabled outside'
 arm "settings read through a link" $T \
   '        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)' '        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)'
 arm "no size bound" $T \
   '    if len(raw) > _BOUND:' '    if False:'
+arm "settings.local.json ignored" $T \
+  '        local = load(self.cfg / "settings.local.json")' '        local = None'
+arm "settings.local.json loses to settings.json" $T \
+  '        return _merge(s, local)' '        return _merge(local, s)'
+arm "frontdesk home judged by string prefix of the unresolved home" $T \
+  '    if real == h or not real.is_relative_to(h):' '    if not str(real).startswith(str(t.home) + "/"):'
 arm "marketplace overwrites a different file" $M \
   '        raise RuntimeError(f"{path} exists and differs' '        return "present"; raise RuntimeError(f"{path} exists and differs'
 arm "marketplace serves an extra pin" $M \

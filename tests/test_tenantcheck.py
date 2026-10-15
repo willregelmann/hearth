@@ -285,3 +285,74 @@ def test_other_plugins_known_when_present_green_when_none(tenant):
     _settings(tenant, lambda s: s["enabledPlugins"].update({"x@elsewhere": True, "y@elsewhere": False}))
     rc, msg = tenantcheck.other_plugins(tenant)
     assert rc == KNOWN and "x@elsewhere" in msg and "y@elsewhere" not in msg
+
+
+# settings.local.json (Ash, #68 R1). home/turn runs claude with cwd=$HOME, so ~/.claude is also the
+# project settings dir and settings.local.json overrides settings.json on every turn. Ash RAN that
+# for enabledPlugins (2.1.288 and 2.1.300); the same merge for env and extraKnownMarketplaces is read.
+def _local(t, d):
+    (t.cfg / "settings.local.json").write_text(json.dumps(d))
+
+
+@pytest.mark.parametrize("name", ["tapestry", "frontdesk"])
+def test_red_disabled_in_settings_local(tenant, name):
+    _local(tenant, {"enabledPlugins": {f"{name}@hearth": False}})
+    rc, msg = tenantcheck.plugin_match(tenant, name)
+    assert rc == RED and "not enabled" in msg, msg
+
+
+def test_green_settings_local_that_changes_nothing_relevant(tenant):
+    _local(tenant, {"enabledPlugins": {"tapestry@hearth": True}, "permissions": {"allow": []}})
+    assert tenantcheck.plugin_match(tenant, "tapestry")[0] == GREEN
+
+
+def test_red_tapestry_python_overridden_in_settings_local(tenant):
+    _local(tenant, {"env": {"TAPESTRY_PYTHON": "/usr/bin/python3"}})
+    rc, msg = tenantcheck.plugin_match(tenant, "tapestry")
+    assert rc == RED and "tapestry:" in msg, msg
+
+
+def test_red_marketplace_repointed_in_settings_local(tenant, tmp_path):
+    _local(tenant, {"extraKnownMarketplaces": {"hearth": {"source": {"source": "directory", "path": str(tmp_path)}}}})
+    rc, msg = tenantcheck.plugin_match(tenant, "frontdesk")
+    assert rc == RED and "settings declare marketplace hearth" in msg, msg
+
+
+def test_other_plugins_sees_settings_local(tenant):
+    _local(tenant, {"enabledPlugins": {"x@elsewhere": True}})
+    rc, msg = tenantcheck.other_plugins(tenant)
+    assert rc == KNOWN and "x@elsewhere" in msg
+
+
+@pytest.mark.parametrize("bad", ["fifo", "not json", "list"])
+def test_red_settings_local_that_can_t_be_read(tenant, bad):
+    f = tenant.cfg / "settings.local.json"
+    if bad == "fifo":
+        os.mkfifo(f)
+    else:
+        f.write_text("{" if bad == "not json" else "[]")
+    for check, args in ((tenantcheck.plugin_match, ("tapestry",)), (tenantcheck.other_plugins, ())):
+        rc, msg = check(tenant, *args)
+        assert rc == RED and msg.startswith("couldn't look") and "settings.local.json" in msg, msg
+
+
+def test_frontdesk_home_judged_against_the_resolved_home(tenant, tmp_path):
+    """Ash #68 S2: a tenant whose passwd home is reached through a link (e.g. /home -> /data/home)
+    still owns a directory inside it."""
+    link = tmp_path / "linkedhome"
+    link.symlink_to(tenant.home)
+    t = tenantcheck.Tenant(link, hearth_py=tenant.hearth_py, mkt=tenant.mkt, ref=tenant.ref,
+                           writable=tenant.writable)
+    d = tenant.home / ".frontdesk/me"
+    d.mkdir(parents=True)
+    _settings(tenant, lambda s: s["pluginConfigs"]["frontdesk@hearth"]["options"].update(home=str(d)))
+    rc, msg = tenantcheck.frontdesk_home(t)
+    assert rc == GREEN, msg
+
+
+def test_red_frontdesk_home_is_the_home_itself_or_a_sibling_prefix(tenant, tmp_path):
+    sib = Path(str(tenant.home) + "2")
+    sib.mkdir()
+    for val in (tenant.home, sib):
+        _settings(tenant, lambda s: s["pluginConfigs"]["frontdesk@hearth"]["options"].update(home=str(val)))
+        assert tenantcheck.frontdesk_home(tenant)[0] == RED, val

@@ -14,7 +14,8 @@ tree compared with root's export at the CURRENT pin (hearth.plugintree). gitComm
 when it disagrees, but never decides: it's a tenant-editable field.
 
 Read from Ash's runs (claude 2.1.288 and 2.1.300, throwaway configs) and the plugin loading docs:
-user settings ~/.claude/settings.json; records in ~/.claude/plugins/{installed_plugins,
+settings ~/.claude/settings.json, overridden by ~/.claude/settings.local.json (turns run with
+cwd=$HOME, so those two are the whole user-and-project pair); records in ~/.claude/plugins/{installed_plugins,
 known_marketplaces}.json; installed_plugins values are arrays of {scope, installPath, version,
 gitCommitSha}; installPath is cache/hearth/<name>/<version>, keyed by the plugin's version, not
 its commit. CLAUDE_CODE_PLUGIN_CACHE_DIR moves the plugins root; check can't see a tenant's session
@@ -63,6 +64,16 @@ def load(path: Path):
         raise Unreadable(f"{path}: unparseable ({type(e).__name__})")
 
 
+def _merge(base, over):
+    """over wins; objects merge key by key, anything else is replaced whole."""
+    if not (isinstance(base, dict) and isinstance(over, dict)):
+        return over
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = _merge(base[k], v) if k in base else v
+    return out
+
+
 class Tenant:
     """What a tenant's Claude Code reads, located from its passwd home."""
 
@@ -75,10 +86,19 @@ class Tenant:
         self.writable = writable or _writable_by_me
 
     def settings(self) -> dict:
+        """The settings a turn runs with. home/turn starts claude with cwd=$HOME, so ~/.claude is
+        both the user and the project settings dir, and settings.local.json there is read on every
+        turn and overrides settings.json (Ash RAN this for enabledPlugins on 2.1.288 and 2.1.300,
+        #68). The deep merge with local winning is assumed for every other key: read, not run."""
         s = load(self.cfg / "settings.json")
         if not isinstance(s, dict):
             raise Unreadable(f"{self.cfg / 'settings.json'}: missing or not an object")
-        return s
+        local = load(self.cfg / "settings.local.json")
+        if local is None:
+            return s
+        if not isinstance(local, dict):
+            raise Unreadable(f"{self.cfg / 'settings.local.json'}: not an object")
+        return _merge(s, local)
 
     def record(self, name: str):
         d = load(self.plugins / name)
@@ -119,9 +139,10 @@ def plugin_match(t: Tenant, name: str):
     k = known.get(marketplace.NAME) or {}
     if k.get("source") != src or k.get("installLocation") != t.mkt:
         found.append(f"known_marketplaces has {marketplace.NAME} at {k.get('installLocation')}, not {t.mkt}")
-    # 2. Enabled, from user settings (higher-precedence sources can't be read from here: README).
+    # 2. Enabled, in settings.json and settings.local.json merged (managed settings and the
+    #    session's flags can't be read from here: README).
     if (s.get("enabledPlugins") or {}).get(pid) is not True:
-        found.append(f"{pid} not enabled in user settings")
+        found.append(f"{pid} not enabled in ~/.claude settings (settings.local.json overrides settings.json)")
     # 3. Exactly one install record, user scope, at the cache path for its own version.
     entries = (inst.get("plugins") or {}).get(pid)
     installed = None
@@ -204,13 +225,14 @@ def frontdesk_home(t: Tenant):
         return RED, f"frontdesk home {p} isn't a directory"
     if st.st_uid != os.getuid():
         return RED, f"frontdesk home {p} isn't owned by this tenant"
-    if not str(p.resolve()).startswith(str(t.home) + "/"):
+    real, h = p.resolve(), t.home.resolve()
+    if real == h or not real.is_relative_to(h):
         return RED, f"frontdesk home {p} is outside {t.home}"
     return GREEN, f"frontdesk home {p}"
 
 
 def other_plugins(t: Tenant):
-    """Plugins enabled in user settings from anywhere but Hearth's marketplace also load into the
+    """Plugins enabled in ~/.claude settings (local overriding) from anywhere but Hearth's marketplace also load into the
     tenant's session. v0 reports them and doesn't fail (Ash, 2026-10-15). KNOWN when there are any,
     GREEN when there are none."""
     try:
@@ -221,7 +243,7 @@ def other_plugins(t: Tenant):
                 if v is True and not k.endswith("@" + marketplace.NAME))
     if on:
         return KNOWN, f"enabled outside @{marketplace.NAME}: {' '.join(on)} (reported, not failed, in v0)"
-    return GREEN, f"no plugin enabled outside @{marketplace.NAME} in user settings"
+    return GREEN, f"no plugin enabled outside @{marketplace.NAME} in ~/.claude settings"
 
 
 CHECKS = {"plugin_match": plugin_match, "frontdesk_home": frontdesk_home, "other_plugins": other_plugins}
