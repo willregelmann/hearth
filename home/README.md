@@ -6,9 +6,10 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
 - `inventory`: the declared list. kind is own, loan or absent. Anything not listed that the
   tenant needs is a HOME failure.
 - `check`: run AS THE TENANT. Its shebang starts it with an empty environment, and it verifies each item by effect. Each item
-  reports GREEN, RED, ABSENT (declared), KNOWN or SKIP. It exits 0 only if nothing is RED or SKIP.
-  KNOWN is a failure accepted by a recorded decision: it never prints as GREEN, and it doesn't
-  fail the run.
+  reports GREEN, RED, ABSENT (declared), KNOWN, PENDING or SKIP. It exits 0 only if nothing is RED,
+  PENDING or SKIP. KNOWN is a failure accepted by a recorded decision: it never prints as GREEN,
+  and it doesn't fail the run. PENDING is a step a person still owes (Front Desk's identity): it
+  fails the run until done.
 - `turn`: the turn runner, installed root-owned at /opt/hearth/home/turn. Run AS THE TENANT:
   `/opt/hearth/home/turn --trigger <what woke it> [--resume <session_id>] [--model M] <prompt>`.
   It runs one `claude -p` turn, prints the reply, exits with claude's code (124 timeout, 127 no
@@ -30,7 +31,35 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   its owner could write one. A dry run against `foil` stops there. `check` and
   `inventory` are installed root-owned under /opt/hearth/home, outside every home, and check's
   `judge` line asserts the tenant can't write them or any directory above them. It follows the choices
-  put to Will: a per-tenant Claude Code pinned to 2.1.288, memory declared absent, and no sudo.
+  put to Will: a per-tenant Claude Code pinned to 2.1.288, Claude Code's own memory declared absent
+  (`cc_memory`), and no sudo.
+- Hearth's plugins (docs/decisions/0009). `provision` builds three root-owned, tenant-read-only
+  things under /opt/hearth: `venv` (hearth with frontdesk and tapestry at the pins), `marketplace`
+  (a directory marketplace generated from `hearth.pins`) and `plugins/<name>/<sha>` (git's tree at
+  each pin, check's reference). The tenant then installs both plugins from that marketplace as
+  itself, Front Desk's `python` option is set through `claude plugin configure --values-stdin`, and
+  `TAPESTRY_PYTHON` goes in the settings env block. Front Desk's `home` is left unset: joining a
+  desk makes an identity, so provision prints the `frontdesk join` command for Will.
+  The inventory changes with it: `memory` is now own (Tapestry), joined by `channel` (Front Desk),
+  `channel_home` and `other_plugins`; the old absent row is `cc_memory`, unchanged.
+  `check` judges each plugin with `hearth.tenantcheck`, run from the root venv as the tenant. It
+  reads `~/.claude/settings.json` overridden by `~/.claude/settings.local.json`: `turn` runs claude
+  with cwd=$HOME, so those two are the whole user-and-project pair, and a local file can switch a
+  plugin off (ran by Ash for enabledPlugins on 2.1.288 and 2.1.300; the same merge for `env` and
+  `extraKnownMarketplaces` is read, not run). GREEN
+  needs: settings and `known_marketplaces.json` both pointing at exactly /opt/hearth/marketplace;
+  the plugin enabled in the merged settings; exactly one user-scope install record at
+  `cache/hearth/<name>/<version>`, no link on that path; its tree equal to root's export at the
+  current pin, modes included, with only an empty top-level `.in_use` excused; root's side not
+  writable by the tenant; and the plugin's interpreter, taken from its config rather than the login
+  env, being Hearth's with the pinned package. `gitCommitSha` is reported, never decisive. The
+  install path is keyed by plugin version, not commit, so a pin bump that keeps the version reuses
+  the directory, and the old tree is held to the new export.
+  Ran by Ash on claude 2.1.288 (Buster's copy) and 2.1.300 in throwaway configs: the marketplace
+  add, both installs, configure. Not yet run on a provisioned tenant. Read, not run: that the env
+  block reaches Tapestry's server, and that nothing outside ~/.claude settings (managed settings,
+  `--plugin-dir`, `CLAUDE_CODE_PLUGIN_CACHE_DIR`) loads another copy; check can't see those.
+  `other_plugins` reports anything enabled outside @hearth as KNOWN, not a failure, in v0.
 - Believed, not checked: `DISABLE_AUTOUPDATER` in `~/.claude/settings.json` env stops Claude
   Code's background updater. `check`'s pinned version line is what proves it, on every run.
 

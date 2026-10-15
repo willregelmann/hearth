@@ -149,6 +149,70 @@ for f in check inventory turn; do
   run install -o root -g root -m "$([ $f = inventory ] && echo 644 || echo 755)" "$here/$f" "$JUDGE/$f"
 done
 
+# 5b. Hearth's own interpreter, and its plugins at the pins (docs/decisions/0009). Root-owned and
+#     read-only to tenants, like the judge: the tenant runs this code, it doesn't get to edit it.
+#     - /opt/hearth/venv: the hearth package, from this checkout, with frontdesk and tapestry at the
+#       commits pyproject pins. One venv for every tenant, so a pin bump moves them all (accepted).
+#     - /opt/hearth/marketplace: the directory marketplace each tenant installs from, generated from
+#       the venv's own pins. Claude Code reads it live, so it must stay root's.
+#     - /opt/hearth/plugins/<name>/<sha>: git's tree at each pin, check's reference (plugin_match).
+#     Each step stops on something that exists and differs, never overwrites it.
+VENV=/opt/hearth/venv; HPY=$VENV/bin/python; MKT=/opt/hearth/marketplace; REF=/opt/hearth/plugins
+repo=$(cd "$here/.." && pwd)
+if [ -x "$HPY" ]; then echo "= $VENV present"
+else
+  run /usr/bin/python3 -m venv "$VENV"
+  run "$HPY" -m pip install --quiet "$repo"
+fi
+if [ $DRY = 1 ] && [ ! -x "$HPY" ]; then
+  echo "+ (dry run) no $VENV yet: marketplace, exports and plugin steps below are what it would do"
+  HPY=${HEARTH_DRY_PYTHON:-}       # a dev venv with hearth installed, to print the real plan
+fi
+if [ -n "$HPY" ]; then
+  run install -d -o root -g root -m 755 "$MKT" "$REF"
+  if [ $DRY = 1 ]; then echo "+ write $MKT/.claude-plugin/marketplace.json:"; "$HPY" -I -m hearth.marketplace render | sed 's/^/    /'
+  else "$HPY" -I -m hearth.marketplace write "$MKT" || die "marketplace not written"
+       chmod -R a-w,a+rX "$MKT"; fi
+  while read -r name url sha sub; do
+    d=$REF/$name/$sha
+    if [ -e "$d" ]; then echo "= $d present"
+    else run install -d -o root -g root -m 755 "$REF/$name"
+         run "$HPY" -I -m hearth.plugintree export "$url" "$sha" "$sub" "$d"
+         [ $DRY = 1 ] || chmod -R a-w,a+rX "$d"; fi
+  done < <("$HPY" -I -m hearth.marketplace exports)
+fi
+
+# 5c. The plugins, installed by the tenant itself from root's marketplace (Ash ran this sequence on
+#     claude 2.1.288 and 2.1.300 in throwaway configs; not yet on a provisioned tenant). Front Desk's
+#     interpreter goes through the CLI's own writer; Tapestry has no plugin option, so its interpreter
+#     goes in the settings env block (read, not run: whether it reaches the plugin's server).
+#     Front Desk's `home` is left unset on purpose: joining a desk creates an identity, which is
+#     Will's to do. check reports it PENDING until then.
+CL=$H/.local/bin/claude
+plug=$H/.claude/plugins
+nolink "$H/.claude" "$plug"
+# Every run, no skip (Ash #68 S1): a skip keyed on what installed_plugins.json says would trust a
+# tenant-written file. Whether a second `marketplace add` / `install` exits 0 is NOT run; if it
+# doesn't, a re-provision stops here loudly (set -e), which is the safe way to find out.
+as_t "$CL" plugin marketplace add "$MKT"
+as_t "$CL" plugin install tapestry@hearth
+as_t "$CL" plugin install frontdesk@hearth
+if [ $DRY = 1 ]; then echo "+ echo '{\"python\":\"$VENV/bin/python\"}' | $CL plugin configure frontdesk@hearth --values-stdin   (as $T)"
+else printf '{"python":"%s"}\n' "$VENV/bin/python" | sudo -u "$T" -H "$CL" plugin configure frontdesk@hearth --values-stdin \
+       || die "plugin configure frontdesk@hearth failed"; fi
+# TAPESTRY_PYTHON into the env block, parsed and rewritten by the tenant's own python, never by root
+if [ $DRY = 1 ]; then echo "+ set env.TAPESTRY_PYTHON=$VENV/bin/python in $settings (as $T)"
+else sudo -u "$T" -H /usr/bin/python3 -I -c '
+import json, os, sys
+p, py = sys.argv[1], sys.argv[2]
+with open(p) as f: s = json.load(f)
+if not isinstance(s, dict) or not isinstance(s.setdefault("env", {}), dict): sys.exit("settings.json env is not an object")
+if s["env"].get("TAPESTRY_PYTHON") == py: sys.exit(0)
+s["env"]["TAPESTRY_PYTHON"] = py
+tmp = p + ".part"
+with open(tmp, "w") as f: json.dump(s, f, indent=2); f.write("\n")
+os.replace(tmp, p)' "$settings" "$VENV/bin/python" || die "couldn't set TAPESTRY_PYTHON in $settings"; fi
+
 # 6. sudo, proved root-side (from inside, sudo can't tell no-rules from password-rules). Written
 #    last, so it is newer than any change this run made; check rejects it once any sudoers file is newer.
 run install -d -o root -g root -m 755 "$JUDGE/attest"
@@ -166,12 +230,17 @@ fi
 
 cat <<EOF
 
-Provisioned $T, apart from the login. Next, as Will:
+Provisioned $T, apart from the login and the desk. Next, as Will:
   1. sudo -iu $T claude          # then /login, and choose the Max account (the declared loan)
-  2. sudo -iu $T $JUDGE/check
-     It must be GREEN apart from memory/sudo (ABSENT, declared) and custody_in (KNOWN while any
-     other account has root). Any RED, stop and send it to Foil.
-  3. Custody, from outside (check can't prove it from inside a sandbox). Every line must FAIL:
+  2. Front Desk identity, which provision doesn't create (it's an identity on a desk):
+     sudo -iu $T $VENV/bin/frontdesk join $T --answerable <you>
+     sudo -iu $T sh -c 'echo "{\"home\":\"\$HOME/.frontdesk/$T\"}" | claude plugin configure frontdesk@hearth --values-stdin'
+     Until then check reports channel_home PENDING, and the run fails.
+  3. sudo -iu $T $JUDGE/check
+     It must be GREEN apart from cc_memory/sudo (ABSENT, declared), custody_in (KNOWN while any
+     other account has root) and other_plugins (KNOWN if anything outside @hearth is enabled).
+     Any RED or PENDING, stop and send it to Foil.
+  4. Custody, from outside (check can't prove it from inside a sandbox). Every line must FAIL:
      sudo -u foil ls /home/$T ; sudo -u refsdal ls /home/$T                    # read
      sudo -u foil stat /home/$T/.hearth/ledger.jsonl                           # traverse (--x reach)
      sudo -u refsdal stat /home/$T/.hearth/ledger.jsonl

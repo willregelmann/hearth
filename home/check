@@ -1,7 +1,8 @@
 #!/usr/bin/env -S -i /bin/bash --noprofile --norc
 # home/check — run AS THE TENANT. Verifies every line of home/inventory by effect.
-# Prints one line per item: GREEN | RED | ABSENT (declared) | SKIP, then exits 0 only if
-# no item is RED or SKIP.
+# Prints one line per item: GREEN | RED | ABSENT (declared) | KNOWN | PENDING | SKIP, then exits 0
+# only if no item is RED, PENDING or SKIP. PENDING is a step a person still owes (e.g. Front Desk's
+# identity, which provision leaves to Will).
 # The shebang clears the environment before bash starts, so nothing from the caller reaches the
 # script: no sentinel to forge, and no BASH_ENV, which bash would source before any line here ran.
 # Everything the checks need is rebuilt below from the passwd entry of whoever is running it.
@@ -27,7 +28,7 @@ INV=${1:-$DEFAULT_INV}
 LEDGER="$HOME/.hearth/ledger.jsonl"
 # Items the run must contain, with the check each must use, whatever the list says: an inventory that
 # drops one, or swaps its check for a weaker one (e.g. declared_absent), can't pass.
-REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant memory:no_memory loan_reach:loan_reach"
+REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant cc_memory:no_memory memory:plugin_match:tapestry channel:plugin_match:frontdesk channel_home:frontdesk_home other_plugins:other_plugins loan_reach:loan_reach"
 # Membership in any of these is root without a sudoers rule. provision denies the same list.
 ROOT_GROUPS="sudo admin wheel docker lxd libvirt"
 ATTEST_DIR=/opt/hearth/home/attest; ATTEST_OWNER=root
@@ -274,13 +275,25 @@ c_judge_not_tenant() {
   [ -z "$w" ] || { echo "writable by $USER:$(echo "$w" | tr ' ' '\n' | sort -u | tr '\n' ' ')"; return 1; }
   echo "$(readlink -f "$0") and inventory not writable by $USER"
 }
+# Hearth's plugins (docs/decisions/0009). The checks themselves are Python in the root-owned venv,
+# run as the tenant: hearth.tenantcheck parses the tenant's settings and install records and compares
+# the installed tree with root's export at the current pin. Its exit code is check's (0/1/4/5).
+HEARTH_PY=/opt/hearth/venv/bin/python
+tc() {
+  [ -x "$HEARTH_PY" ] || { echo "no $HEARTH_PY (provision step 5b)"; return 1; }
+  "$HEARTH_PY" -I -m hearth.tenantcheck "$@" 2>&1 | head -c 2000
+  return "${PIPESTATUS[0]}"
+}
+c_plugin_match() { tc plugin_match "$1"; }
+c_frontdesk_home() { tc frontdesk_home; }
+c_other_plugins() { tc other_plugins; }
 
 seen=" "
 while IFS='|' read -r item kind owner issuer chk; do
   item=$(echo "$item" | xargs); chk=$(echo "$chk" | xargs); kind=$(echo "$kind" | xargs)
   case "$item" in ''|\#*) continue;; esac
   arg=""; case "$chk" in *:*) arg=${chk#*:}; chk=${chk%%:*};; esac
-  seen="$seen$item:$chk "
+  seen="$seen$item:$chk ${arg:+$item:$chk:$arg }"   # with its argument too, so REQUIRED can pin one
   fn="c_$chk"
   if ! declare -F "$fn" >/dev/null; then printf 'RED    %-11s unknown check %s\n' "$item" "$chk"; bad=1; continue; fi
   msg=$($fn "$arg" 2>&1 </dev/null); rc=$?   # stdin is the inventory: a check that reads it (claude -p does) eats the rest
@@ -290,6 +303,7 @@ while IFS='|' read -r item kind owner issuer chk; do
     2) printf 'SKIP   %-11s (--no-model)\n' "$item"; bad=1;;
     3) printf 'ABSENT %-11s declared absent %s\n' "$item" "$msg";;
     4) printf 'KNOWN  %-11s %s\n' "$item" "$msg";;
+    5) printf 'PENDING %-10s %s\n' "$item" "$msg"; bad=1;;
     *) printf 'RED    %-11s %s\n' "$item" "$msg"; bad=1;;
   esac
 done < <([ -r "$INV" ] && cat "$INV")
