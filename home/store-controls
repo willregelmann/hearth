@@ -4,6 +4,9 @@
 # the caller, with a stub curl on PATH and a fake binary whose sha256 is the pin. Needs no root and
 # no network. Each guard's control must fail with the guard removed (store-arms in the PR body).
 set -u
+# Fixtures are made with mkdir/cp, so their modes follow the umask; under 0002 the store dir would be
+# 775 and the dir guard would fire before the guard a control means to test (Ash on #79). Pin it.
+umask 022
 here=$(dirname "$(readlink -f "$0")")
 t=$(mktemp -d); trap 'chmod -R u+w "$t" 2>/dev/null; rm -rf "$t"' EXIT
 fail=0
@@ -48,12 +51,12 @@ reset; rc=$(STUB_FAIL=1 run)
 expect "download fails: STOP, nothing installed, no part left" \
   $([ "$rc" != 0 ] && grep -q 'download of' "$t/out" && [ ! -e "$F" ] && [ "$(parts)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
 reset; mkdir -p "$S"; cp "$t/bad" "$F"; chmod 755 "$F"; rc=$(run)
-expect "stored file with the wrong hash: STOP, left as it is" \
-  $([ "$rc" != 0 ] && grep -q "doesn't hash to" "$t/out" && cmp -s "$F" "$t/bad"; echo $?) "rc=$rc $(cat "$t/out")"
+expect "stored file with the wrong hash: STOP on the hash, left as it is" \
+  $([ "$rc" != 0 ] && grep -q "doesn't hash to" "$t/out" && ! grep -q 'directory only' "$t/out" && cmp -s "$F" "$t/bad"; echo $?) "rc=$rc $(cat "$t/out")"
 reset; mkdir -p "$S"; cp "$t/good" "$F"; chmod 775 "$F"; rc=$(run)
-expect "stored file group-writable: STOP" $([ "$rc" != 0 ] && grep -q 'only .* can write' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+expect "stored file group-writable: STOP on the file guard" $([ "$rc" != 0 ] && grep -q 'regular file only' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
 reset; mkdir -p "$S"; cp "$t/good" "$t/elsewhere"; ln -s "$t/elsewhere" "$F"; rc=$(run)
-expect "stored file is a link (to a good copy): STOP" $([ "$rc" != 0 ] && grep -q 'regular file' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+expect "stored file is a link (to a good copy): STOP on the file guard" $([ "$rc" != 0 ] && grep -q 'regular file only' "$t/out" && ! grep -q 'directory only' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
 reset; mkdir -p "$S"; chmod 777 "$S"; rc=$(run)
 expect "store dir writable by others: STOP before downloading" \
   $([ "$rc" != 0 ] && grep -q 'directory only' "$t/out" && [ ! -e "$F" ]; echo $?) "rc=$rc $(cat "$t/out")"
