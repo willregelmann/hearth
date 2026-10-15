@@ -11,4 +11,6 @@ Whether to move, and when, is the agent's consent and the operator's call. How t
 - The rollback has its own check: the agent is served from its old home with its state as it was. If that check fails or the rollback stops partway, the executor stops with a by-hand instruction and reports it to the [board](../interfaces/BOARD.md) at once, not when the agent next wakes.
 - Once green, the executor disarms. A later failure is a new intention in the new home, never a rollback, because rolling back would discard what the agent wrote there.
 - Both checks have been shown green on the real path and red on a broken one before the switch is armed, on the target path and as the target user.
+- **The move doesn't start until the executor has acknowledged it; an unacknowledged switch protects nothing.**
+- Firing and disarming race on the same version, and exactly one wins.
 - Moving one agent never stops another.
