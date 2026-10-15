@@ -46,7 +46,10 @@ B=$(mktemp); cp -p $F $B
 # gateway drain SIGKILLing the turn that launched this. SIGKILL cannot be trapped, so this
 # covers TERM/INT/HUP and the ordinary exit paths; nothing can cover -9.
 restore() {
-  if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; rm -f "$B"; fi
+  if [ -n "${B:-}" ] && [ -f "$B" ]; then
+    cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F" >&2
+    rm -f "$B"
+  fi
   return 0
 }
 trap restore EXIT
