@@ -4,6 +4,10 @@
 set -u
 cd "$(dirname "$0")/.."
 PY=${PY:-.venv/bin/python}
+# Same baseline as tests/mutation-arms.sh (#66): a missing interpreter or a red unarmed suite turns
+# every arm "red" for the wrong reason.
+"$PY" -c 'import sys' >/dev/null 2>&1 || { echo "FATAL: PY=$PY is not a usable interpreter" >&2; exit 2; }
+"$PY" -m pytest -q -p no:cacheprovider tests/ >/dev/null 2>&1 || { echo "FATAL: the UNARMED suite is not green under PY=$PY" >&2; exit 2; }
 F=hearth/plugintree.py
 B=$(mktemp); cp -p $F $B
 red=0; bad=0
@@ -45,4 +49,4 @@ arm "a digest of a non-file is a digest" \
   '        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
             return None' '        pass'
 rm -f $B
-echo "arms red: $red, arms green: $bad"
+echo "arms red: $red, arms green: $bad"; [ "$bad" = 0 ]

@@ -4,6 +4,9 @@
 set -u
 cd "$(dirname "$0")/.."
 PY=${PY:-.venv/bin/python}
+# Same baseline as tests/mutation-arms.sh (#66).
+"$PY" -c 'import sys' >/dev/null 2>&1 || { echo "FATAL: PY=$PY is not a usable interpreter" >&2; exit 2; }
+"$PY" -m pytest -q -p no:cacheprovider tests/ >/dev/null 2>&1 || { echo "FATAL: the UNARMED suite is not green under PY=$PY" >&2; exit 2; }
 red=0; bad=0
 arm() {
   local name="$1" F="$2" old="$3" new="$4" B
@@ -57,4 +60,4 @@ arm "marketplace overwrites a different file" $M \
   '        raise RuntimeError(f"{path} exists and differs' '        return "present"; raise RuntimeError(f"{path} exists and differs'
 arm "marketplace serves an extra pin" $M \
   '    if set(p) != set(PLUGINS):' '    if False:'
-echo "arms red: $red, arms green: $bad"
+echo "arms red: $red, arms green: $bad"; [ "$bad" = 0 ]
