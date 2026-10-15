@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# home/venv-controls: controls for home/venv-state and provision's venv step (#86). No root, no
+# network: a fake site-packages holds a copy of this checkout's hearth/ plus dist-info for hearth,
+# frontdesk and tapestry (direct_url.json carrying the pins), and a wrapper stands in for the venv's
+# python (it runs venv-state against the fake site, and fakes pip by syncing the checkout in).
+set -u
+umask 022
+here=$(dirname "$(readlink -f "$0")")
+repo=$(cd "$here/.." && pwd)
+t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
+fail=0
+expect() { if [ "$2" = 0 ]; then echo "ok   $1"; else echo "FAIL $1: $3"; fail=1; fi; }
+PY=$(command -v python3)
+pin() { sed -n "s/^ *\"$1[^\"]*@\([0-9a-f]\{40\}\)\",*$/\1/p" "$repo/pyproject.toml"; }
+FD=$(pin frontdesk); TP=$(pin tapestry)
+[ ${#FD} = 40 ] && [ ${#TP} = 40 ] || { echo "FAIL could not read the pins from pyproject.toml"; exit 1; }
+S=$t/site
+dist() { # name version commit
+  local d=$S/$1-$2.dist-info; mkdir -p "$d"
+  printf 'Metadata-Version: 2.1\nName: %s\nVersion: %s\n' "$1" "$2" > "$d/METADATA"
+  [ -n "${3:-}" ] && printf '{"url": "x", "vcs_info": {"commit_id": "%s", "vcs": "git"}}' "$3" > "$d/direct_url.json"
+  return 0
+}
+fresh() { rm -rf "$S"; mkdir -p "$S"; cp -r "$repo/hearth" "$S/hearth"; rm -rf "$S/hearth/__pycache__"
+          dist hearth 0.0.0; dist frontdesk 0.1.0 "$FD"; dist tapestry 0.0.0 "$TP"; }
+vs() { "$PY" -I "$here/venv-state" "$repo" "$S" > "$t/out" 2>&1; echo $?; }
+
+fresh; rc=$(vs); expect "venv-state: a copy of this checkout matches (0)" $([ "$rc" = 0 ] && [ ! -s "$t/out" ]; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; echo "# older" >> "$S/hearth/tenantcheck.py"; rc=$(vs)
+expect "venv-state: pins match, tenantcheck.py older (the #85 case) -> 3, names the file" \
+  $([ "$rc" = 3 ] && grep -qx 'hearth/tenantcheck.py: installed copy differs from the checkout' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; dist frontdesk 0.1.0 "$(printf 'a%.0s' {1..40})"; rc=$(vs)
+expect "venv-state: frontdesk at another commit -> 3, names it" $([ "$rc" = 3 ] && grep -q "^frontdesk: installed at a\{40\}, checkout pins $FD" "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; rm "$S/tapestry-0.0.0.dist-info/direct_url.json"; rc=$(vs)
+expect "venv-state: no recorded commit for tapestry -> 3" $([ "$rc" = 3 ] && grep -q '^tapestry: installed at None' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; echo "x = 1" > "$S/hearth/planted.py"; rc=$(vs)
+expect "venv-state: a file installed but not in the checkout -> 3" $([ "$rc" = 3 ] && grep -q '^hearth/planted.py: installed, not in the checkout' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; rm "$S/hearth/marketplace.py"; rc=$(vs)
+expect "venv-state: a checkout file not installed -> 3" $([ "$rc" = 3 ] && grep -q '^hearth/marketplace.py: in the checkout, not installed' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; rm -r "$S/frontdesk-0.1.0.dist-info"; rc=$(vs)
+expect "venv-state: frontdesk not installed -> 2, never 0 or 3" $([ "$rc" = 2 ] && grep -q "^couldn't compare" "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; dist hearth 0.0.1; rc=$(vs)
+expect "venv-state: two hearth dists -> 2" $([ "$rc" = 2 ]; echo $?) "rc=$rc $(cat "$t/out")"
+
+# provision's venv block, extracted as written, with HPY a wrapper around the fake site
+block=$(sed -n '/^# --- venv begin$/,/^# --- venv end$/p' "$here/provision")
+echo "$block" | grep -q 'venv-state' || { echo "FAIL could not extract provision's venv block"; exit 1; }
+mkdir -p "$t/venv/bin"
+cat > "$t/venv/bin/python" <<EOF
+#!/bin/sh
+# stand-in for /opt/hearth/venv/bin/python
+if [ "\$1" = -m ] && [ "\$2" = pip ]; then
+  echo "pip \$*" >> "$t/pip.log"
+  [ "\${FAKE_PIP_BROKEN:-0}" = 1 ] && exit 0
+  rm -rf "$S/hearth"; cp -r "$repo/hearth" "$S/hearth"; rm -rf "$S/hearth/__pycache__"; exit 0
+fi
+[ "\${FAKE_CRASH:-0}" = 1 ] && exec "$PY" -I -c 'import tomllib_from_the_future'   # uncaught: rc 1
+[ "\$1" = -I ] && shift
+exec "$PY" -I "\$@" "$S"
+EOF
+chmod +x "$t/venv/bin/python"
+{ printf 'set -euo pipefail\n'
+  printf 'die() { echo "STOP: $*" >&2; exit 1; }\n'
+  printf 'run() { echo "+ $*"; [ $DRY = 1 ] || "$@"; }\n'
+  printf 'DRY=${DRY:-0}; UPGRADE=${UPGRADE:-0}; here=%s; repo=%s; VENV=%s; HPY=$VENV/bin/python\n' "$here" "$repo" "$t/venv"
+  printf '%s\n' "$block"; } > "$t/step"
+prov() { rm -f "$t/pip.log"; bash "$t/step" > "$t/out" 2>&1; echo $?; }
+pipruns() { [ -f "$t/pip.log" ] && wc -l < "$t/pip.log" || echo 0; }
+
+fresh; rc=$(prov)
+expect "provision: venv matches -> '= present, matches', no pip" \
+  $([ "$rc" = 0 ] && grep -q 'present, matches this checkout' "$t/out" && [ "$(pipruns)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; echo "# older" >> "$S/hearth/tenantcheck.py"; rc=$(prov)
+expect "provision: venv older, no --upgrade -> STOP naming the file and --upgrade, no pip" \
+  $([ "$rc" != 0 ] && grep -q 'STOP: .*differs from this checkout: hearth/tenantcheck.py.*--upgrade' "$t/out" && [ "$(pipruns)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; echo "# older" >> "$S/hearth/tenantcheck.py"; rc=$(UPGRADE=1 prov)
+expect "provision: venv older, --upgrade -> reinstalls, re-checks, '= upgraded'" \
+  $([ "$rc" = 0 ] && grep -q 'upgraded, matches this checkout' "$t/out" && [ "$(pipruns)" = 1 ] && cmp -s "$S/hearth/tenantcheck.py" "$repo/hearth/tenantcheck.py"; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; echo "# older" >> "$S/hearth/tenantcheck.py"; rc=$(UPGRADE=1 FAKE_PIP_BROKEN=1 prov)
+expect "provision: --upgrade that doesn't take -> STOP 'still differs'" \
+  $([ "$rc" != 0 ] && grep -q 'still differs after --upgrade' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; echo "# older" >> "$S/hearth/tenantcheck.py"; rc=$(DRY=1 UPGRADE=1 prov)
+expect "provision: dry run with --upgrade prints the pip lines and changes nothing" \
+  $([ "$rc" = 0 ] && grep -q '^+ .*pip install' "$t/out" && [ "$(pipruns)" = 0 ] && ! cmp -s "$S/hearth/tenantcheck.py" "$repo/hearth/tenantcheck.py"; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; rm -r "$S/tapestry-0.0.0.dist-info"; rc=$(UPGRADE=1 prov)
+expect "provision: couldn't compare -> STOP, even with --upgrade, no pip" \
+  $([ "$rc" != 0 ] && grep -q "couldn't compare $t/venv" "$t/out" && [ "$(pipruns)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; rc=$(UPGRADE=1 FAKE_CRASH=1 prov)
+expect "provision: venv-state crashes before main (rc 1), even with --upgrade -> couldn't compare, no pip" \
+  $([ "$rc" != 0 ] && grep -q "couldn't compare $t/venv" "$t/out" && [ "$(pipruns)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
+exit $fail

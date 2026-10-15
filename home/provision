@@ -3,6 +3,7 @@
 #
 #   sudo home/provision buster            # do it
 #   sudo home/provision --dry-run buster  # print what it would do, change nothing
+#   sudo home/provision --upgrade buster  # also reinstall /opt/hearth/venv if it differs from this checkout
 #
 # Every step checks its own state first, so a re-run after a failure continues instead of
 # duplicating. One gap: if it dies between useradd and the registry write (the next command), a
@@ -19,8 +20,13 @@
 #   - no sudo for the tenant
 set -euo pipefail
 
-DRY=0; [ "${1:-}" = "--dry-run" ] && { DRY=1; shift; }
-T=${1:?usage: provision [--dry-run] <tenant>}
+DRY=0; UPGRADE=0
+while :; do case "${1:-}" in
+  --dry-run) DRY=1; shift;;
+  --upgrade) UPGRADE=1; shift;;
+  *) break;;
+esac; done
+T=${1:?usage: provision [--dry-run] [--upgrade] <tenant>}
 CLAUDE_VERSION=2.1.288
 # Root's own copy of the pinned binary, checked against Anthropic's published sha256 for this
 # version (https://downloads.claude.ai/claude-code-releases/2.1.288/manifest.json, linux-x64). The
@@ -186,11 +192,36 @@ done
 #     Each step stops on something that exists and differs, never overwrites it.
 VENV=/opt/hearth/venv; HPY=$VENV/bin/python; MKT=/opt/hearth/marketplace; REF=/opt/hearth/plugins
 repo=$(cd "$here/.." && pwd)
-if [ -x "$HPY" ]; then echo "= $VENV present"
+# The venv is judged by content, like every other root-owned thing here (#86): home/venv-state
+# compares the installed hearth files and the pinned imports' recorded commits with this checkout.
+# A difference (rc 3) is a STOP unless --upgrade was given, because tenants run this interpreter.
+# Any other rc, a crash included, is "couldn't compare": a STOP that never reinstalls.
+# On a pin bump, --upgrade moves the venv and then the marketplace write below STOPs ("exists and
+# differs"): the marketplace is a pin change a person makes on purpose. Remove
+# /opt/hearth/marketplace/.claude-plugin/marketplace.json and re-run to finish.
+# --- venv begin
+if [ -x "$HPY" ]; then
+  vrc=0; vs=$("$HPY" -I "$here/venv-state" "$repo" 2>&1) || vrc=$?   # set -e: capture, don't exit
+  case $vrc in
+    0) echo "= $VENV present, matches this checkout";;
+    3) if [ $UPGRADE = 1 ]; then
+         echo "$vs" | sed 's/^/  ~ /'
+         run "$HPY" -m pip install --quiet --force-reinstall "$repo"
+         if [ $DRY = 0 ]; then
+           vs=$("$HPY" -I "$here/venv-state" "$repo" 2>&1) \
+             || die "$VENV still differs after --upgrade: $(echo "$vs" | tr '\n' ';')"
+           echo "= $VENV upgraded, matches this checkout"
+         fi
+       else
+         die "$VENV differs from this checkout: $(echo "$vs" | tr '\n' ';') Re-run with --upgrade to install it (tenants use this interpreter)."
+       fi;;
+    *) die "couldn't compare $VENV with this checkout: $vs";;
+  esac
 else
   run /usr/bin/python3 -m venv "$VENV"
   run "$HPY" -m pip install --quiet "$repo"
 fi
+# --- venv end
 if [ $DRY = 1 ] && [ ! -x "$HPY" ]; then
   echo "+ (dry run) no $VENV yet: marketplace, exports and plugin steps below are what it would do"
   HPY=${HEARTH_DRY_PYTHON:-}       # a dev venv with hearth installed, to print the real plan

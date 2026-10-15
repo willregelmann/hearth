@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""home/venv-state: does an installed Hearth venv match this checkout? (hearth #86)
+
+    /opt/hearth/venv/bin/python -I home/venv-state <checkout> [<site-packages>]
+
+Run with the venv's own interpreter. Compares, and prints one line per difference:
+  - each hearth/*.py in the checkout against the installed file's bytes (sha256), and any installed
+    hearth/*.py the checkout doesn't have. The installed files are read, not pip's RECORD, so a file
+    edited after install is seen too. hearth's own install records no commit (it's installed from a
+    directory, version 0.0.0), so content is the only thing to compare.
+  - each pinned import's commit in the checkout's pyproject.toml against the commit pip recorded in
+    that dist's direct_url.json.
+Exit 0: matches. 3: differs. 2: couldn't compare. "Differs" is 3, not 1, because Python itself exits 1
+on anything uncaught before main() runs (a SyntaxError, or no tomllib on an old interpreter), and
+provision must never read a crash as "differs" and reinstall on it (Ash on #87).
+Standard library only, so it runs before hearth itself is importable.
+"""
+import hashlib
+import json
+import re
+import sys
+import tomllib
+from importlib import metadata
+from pathlib import Path
+
+PINNED = ("frontdesk", "tapestry")
+
+
+def _sha(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def _pyfiles(root: Path) -> dict[str, Path]:
+    return {str(f.relative_to(root)): f for f in root.rglob("*.py") if "__pycache__" not in f.parts}
+
+
+def _dist(name: str, site):
+    kw = {"path": site} if site is not None else {}
+    found = list(metadata.distributions(name=name, **kw))
+    if len(found) != 1:
+        raise LookupError(f"{len(found)} installed distributions named {name}")
+    return found[0]
+
+
+def compare(checkout: Path, site=None) -> list[str]:
+    diffs = []
+    src = checkout / "hearth"
+    if not src.is_dir():
+        raise LookupError(f"{src} isn't a directory")
+    inst = Path(_dist("hearth", site).locate_file("hearth"))
+    if not inst.is_dir() or inst.resolve() == src.resolve():
+        raise LookupError(f"installed hearth at {inst} isn't a copy (editable install?)")
+    want, have = _pyfiles(src), _pyfiles(inst)
+    for rel in sorted(set(want) | set(have)):
+        if rel not in have:
+            diffs.append(f"hearth/{rel}: in the checkout, not installed")
+        elif rel not in want:
+            diffs.append(f"hearth/{rel}: installed, not in the checkout")
+        elif _sha(want[rel]) != _sha(have[rel]):
+            diffs.append(f"hearth/{rel}: installed copy differs from the checkout")
+    deps = tomllib.loads((checkout / "pyproject.toml").read_text())["project"]["dependencies"]
+    for name in PINNED:
+        line = [d for d in deps if re.match(rf"{name}\b", d)]
+        m = re.search(r"@([0-9a-f]{40})\s*$", line[0]) if len(line) == 1 else None
+        if not m:
+            raise LookupError(f"no single 40-hex pin for {name} in {checkout / 'pyproject.toml'}")
+        raw = _dist(name, site).read_text("direct_url.json")
+        got = (json.loads(raw or "{}").get("vcs_info") or {}).get("commit_id")
+        if got != m.group(1):
+            diffs.append(f"{name}: installed at {got}, checkout pins {m.group(1)}")
+    return diffs
+
+
+def main(argv=None) -> int:
+    a = list(sys.argv[1:] if argv is None else argv)
+    if len(a) not in (1, 2):
+        print("usage: venv-state <checkout> [<site-packages>]", file=sys.stderr)
+        return 2
+    try:
+        diffs = compare(Path(a[0]), [a[1]] if len(a) == 2 else None)
+    except Exception as e:  # anything unexpected is "couldn't compare" (2), never "differs" (1)
+        print(f"couldn't compare: {type(e).__name__}: {e}")
+        return 2
+    for d in diffs:
+        print(d)
+    return 3 if diffs else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
