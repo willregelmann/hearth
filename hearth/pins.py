@@ -1,6 +1,9 @@
 """Hearth's pinned imports, and the check that a tenant runs exactly them (docs/decisions/0009).
 
-The pins are read from pyproject.toml, so there is one place to change them. What is checked is
+The pins are written once, in pyproject.toml. At run time they are read from the installed hearth
+distribution's own metadata (its Requires-Dist), which is what pip or uv installed from that file:
+pyproject.toml itself isn't installed, so a normal (non-editable) install like /opt/hearth/venv
+has no file to read. What is checked is
 what the plugins will actually run: each plugin starts its own interpreter (Tapestry's launcher
 uses TAPESTRY_PYTHON or its own ~/.tapestry/venv; Front Desk's runs FRONTDESK_PYTHON or the
 plugin's configured python), so the Hearth venv importing the right commit proves nothing about
@@ -11,22 +14,37 @@ import os
 import re
 import subprocess
 import tomllib
+from importlib import metadata
 from pathlib import Path
+from typing import Optional
 
 PYPROJECT = Path(__file__).resolve().parent.parent / "pyproject.toml"
 _DEP = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)(\[[^\]]*\])?\s*@\s*git\+(?P<url>[^@\s]+)@(?P<commit>[0-9a-f]{40})$")
 
 
-def pins(pyproject: Path = PYPROJECT) -> dict[str, dict]:
-    """{name: {"url", "commit"}} for every git dependency. A dependency that isn't pinned to a
-    full commit is an error, not skipped: a branch or tag can move without review."""
+def _parse(deps) -> dict[str, dict]:
     out = {}
-    for dep in tomllib.loads(pyproject.read_text())["project"]["dependencies"]:
+    for dep in deps:
+        if ";" in dep:          # an environment marker: only optional extras carry one here
+            if "extra ==" in dep:
+                continue
+            raise ValueError(f"unexpected marker on a dependency: {dep!r}")
         m = _DEP.match(dep.strip())
         if not m:
             raise ValueError(f"not pinned to a 40-character commit: {dep!r}")
         out[m["name"]] = {"url": m["url"], "commit": m["commit"]}
     return out
+
+
+def pins(pyproject: Optional[Path] = None) -> dict[str, dict]:
+    """{name: {"url", "commit"}} for every git dependency. A dependency that isn't pinned to a
+    full commit is an error, not skipped: a branch or tag can move without review.
+
+    By default the pins come from the installed hearth distribution, so they are what this
+    install was built from. Pass a pyproject.toml to read the source file instead."""
+    if pyproject is not None:
+        return _parse(tomllib.loads(pyproject.read_text())["project"]["dependencies"])
+    return _parse(metadata.requires("hearth") or [])
 
 
 _PROBE = r"""
@@ -66,7 +84,7 @@ def plugin_pythons(env: dict, home: Path) -> dict[str, str]:
     return {"tapestry": env.get("TAPESTRY_PYTHON") or f"{tap_home}/venv/bin/python", "frontdesk": fd}
 
 
-def problems(hearth_python: str, env: dict, home: Path, pyproject: Path = PYPROJECT) -> list[str]:
+def problems(hearth_python: str, env: dict, home: Path, pyproject: Optional[Path] = None) -> list[str]:
     """Everything wrong with a tenant's plugin interpreters, as sentences. Empty means each plugin
     runs Hearth's interpreter and imports exactly the pinned commit."""
     want = pins(pyproject)
