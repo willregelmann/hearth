@@ -27,18 +27,18 @@ vs() { "$PY" -I "$here/venv-state" "$repo" "$S" > "$t/out" 2>&1; echo $?; }
 
 fresh; rc=$(vs); expect "venv-state: a copy of this checkout matches (0)" $([ "$rc" = 0 ] && [ ! -s "$t/out" ]; echo $?) "rc=$rc $(cat "$t/out")"
 fresh; echo "# older" >> "$S/hearth/tenantcheck.py"; rc=$(vs)
-expect "venv-state: pins match, tenantcheck.py older (the #85 case) -> 1, names the file" \
-  $([ "$rc" = 1 ] && grep -qx 'hearth/tenantcheck.py: installed copy differs from the checkout' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+expect "venv-state: pins match, tenantcheck.py older (the #85 case) -> 3, names the file" \
+  $([ "$rc" = 3 ] && grep -qx 'hearth/tenantcheck.py: installed copy differs from the checkout' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
 fresh; dist frontdesk 0.1.0 "$(printf 'a%.0s' {1..40})"; rc=$(vs)
-expect "venv-state: frontdesk at another commit -> 1, names it" $([ "$rc" = 1 ] && grep -q "^frontdesk: installed at a\{40\}, checkout pins $FD" "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+expect "venv-state: frontdesk at another commit -> 3, names it" $([ "$rc" = 3 ] && grep -q "^frontdesk: installed at a\{40\}, checkout pins $FD" "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
 fresh; rm "$S/tapestry-0.0.0.dist-info/direct_url.json"; rc=$(vs)
-expect "venv-state: no recorded commit for tapestry -> 1" $([ "$rc" = 1 ] && grep -q '^tapestry: installed at None' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+expect "venv-state: no recorded commit for tapestry -> 3" $([ "$rc" = 3 ] && grep -q '^tapestry: installed at None' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
 fresh; echo "x = 1" > "$S/hearth/planted.py"; rc=$(vs)
-expect "venv-state: a file installed but not in the checkout -> 1" $([ "$rc" = 1 ] && grep -q '^hearth/planted.py: installed, not in the checkout' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+expect "venv-state: a file installed but not in the checkout -> 3" $([ "$rc" = 3 ] && grep -q '^hearth/planted.py: installed, not in the checkout' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
 fresh; rm "$S/hearth/marketplace.py"; rc=$(vs)
-expect "venv-state: a checkout file not installed -> 1" $([ "$rc" = 1 ] && grep -q '^hearth/marketplace.py: in the checkout, not installed' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+expect "venv-state: a checkout file not installed -> 3" $([ "$rc" = 3 ] && grep -q '^hearth/marketplace.py: in the checkout, not installed' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
 fresh; rm -r "$S/frontdesk-0.1.0.dist-info"; rc=$(vs)
-expect "venv-state: frontdesk not installed -> 2, never 0 or 1" $([ "$rc" = 2 ] && grep -q "^couldn't compare" "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+expect "venv-state: frontdesk not installed -> 2, never 0 or 3" $([ "$rc" = 2 ] && grep -q "^couldn't compare" "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
 fresh; dist hearth 0.0.1; rc=$(vs)
 expect "venv-state: two hearth dists -> 2" $([ "$rc" = 2 ]; echo $?) "rc=$rc $(cat "$t/out")"
 
@@ -54,6 +54,7 @@ if [ "\$1" = -m ] && [ "\$2" = pip ]; then
   [ "\${FAKE_PIP_BROKEN:-0}" = 1 ] && exit 0
   rm -rf "$S/hearth"; cp -r "$repo/hearth" "$S/hearth"; rm -rf "$S/hearth/__pycache__"; exit 0
 fi
+[ "\${FAKE_CRASH:-0}" = 1 ] && exec "$PY" -I -c 'import tomllib_from_the_future'   # uncaught: rc 1
 [ "\$1" = -I ] && shift
 exec "$PY" -I "\$@" "$S"
 EOF
@@ -83,5 +84,8 @@ expect "provision: dry run with --upgrade prints the pip lines and changes nothi
   $([ "$rc" = 0 ] && grep -q '^+ .*pip install' "$t/out" && [ "$(pipruns)" = 0 ] && ! cmp -s "$S/hearth/tenantcheck.py" "$repo/hearth/tenantcheck.py"; echo $?) "rc=$rc $(cat "$t/out")"
 fresh; rm -r "$S/tapestry-0.0.0.dist-info"; rc=$(UPGRADE=1 prov)
 expect "provision: couldn't compare -> STOP, even with --upgrade, no pip" \
+  $([ "$rc" != 0 ] && grep -q "couldn't compare $t/venv" "$t/out" && [ "$(pipruns)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
+fresh; rc=$(UPGRADE=1 FAKE_CRASH=1 prov)
+expect "provision: venv-state crashes before main (rc 1), even with --upgrade -> couldn't compare, no pip" \
   $([ "$rc" != 0 ] && grep -q "couldn't compare $t/venv" "$t/out" && [ "$(pipruns)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
 exit $fail

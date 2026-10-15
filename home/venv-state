@@ -10,7 +10,9 @@ Run with the venv's own interpreter. Compares, and prints one line per differenc
     directory, version 0.0.0), so content is the only thing to compare.
   - each pinned import's commit in the checkout's pyproject.toml against the commit pip recorded in
     that dist's direct_url.json.
-Exit 0: matches. 1: differs. 2: couldn't compare (nothing is ever reported as a match by default).
+Exit 0: matches. 3: differs. 2: couldn't compare. "Differs" is 3, not 1, because Python itself exits 1
+on anything uncaught before main() runs (a SyntaxError, or no tomllib on an old interpreter), and
+provision must never read a crash as "differs" and reinstall on it (Ash on #87).
 Standard library only, so it runs before hearth itself is importable.
 """
 import hashlib
@@ -81,7 +83,7 @@ def main(argv=None) -> int:
         return 2
     for d in diffs:
         print(d)
-    return 1 if diffs else 0
+    return 3 if diffs else 0
 
 
 if __name__ == "__main__":

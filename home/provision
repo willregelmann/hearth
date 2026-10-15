@@ -194,13 +194,17 @@ VENV=/opt/hearth/venv; HPY=$VENV/bin/python; MKT=/opt/hearth/marketplace; REF=/o
 repo=$(cd "$here/.." && pwd)
 # The venv is judged by content, like every other root-owned thing here (#86): home/venv-state
 # compares the installed hearth files and the pinned imports' recorded commits with this checkout.
-# A difference is a STOP unless --upgrade was given, because tenants run this interpreter.
+# A difference (rc 3) is a STOP unless --upgrade was given, because tenants run this interpreter.
+# Any other rc, a crash included, is "couldn't compare": a STOP that never reinstalls.
+# On a pin bump, --upgrade moves the venv and then the marketplace write below STOPs ("exists and
+# differs"): the marketplace is a pin change a person makes on purpose. Remove
+# /opt/hearth/marketplace/.claude-plugin/marketplace.json and re-run to finish.
 # --- venv begin
 if [ -x "$HPY" ]; then
   vrc=0; vs=$("$HPY" -I "$here/venv-state" "$repo" 2>&1) || vrc=$?   # set -e: capture, don't exit
   case $vrc in
     0) echo "= $VENV present, matches this checkout";;
-    1) if [ $UPGRADE = 1 ]; then
+    3) if [ $UPGRADE = 1 ]; then
          echo "$vs" | sed 's/^/  ~ /'
          run "$HPY" -m pip install --quiet --force-reinstall "$repo"
          if [ $DRY = 0 ]; then

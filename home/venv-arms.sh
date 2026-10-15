@@ -29,8 +29,12 @@ arm "two installed dists of one name accepted (first wins)" $V \
   '    if len(found) != 1:' '    if not found:'
 arm "an unexpected error reads as 'differs'" $V \
   '        return 2
-    for d in diffs:' '        return 1
+    for d in diffs:' '        return 3
     for d in diffs:'
+arm "provision reads a crash (rc 1) as 'differs'" $P \
+  '    3) if [ $UPGRADE = 1 ]; then' '    1|3) if [ $UPGRADE = 1 ]; then'
+arm "venv-state's 'differs' collides with Python's own exit 1" $V \
+  '    return 3 if diffs else 0' '    return 1 if diffs else 0'
 arm "provision treats a difference as present" $P \
   '         die "$VENV differs from this checkout:' '         echo "$VENV differs from this checkout:'
 arm "provision skips the re-check after --upgrade" $P \
