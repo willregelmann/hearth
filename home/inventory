@@ -13,6 +13,10 @@ loan_reach  | loan   | Will        | claude.ai account, via oauth | loan_reach
 ledger      | own    | tenant      | turn runner              | ledger_writable
 custody     | own    | tenant      | OS user boundary         | others_unreadable
 custody_in  | own    | tenant      | OS user boundary         | inbound_custody
-memory      | absent | -           | -                        | no_memory
+cc_memory   | absent | -           | -                        | no_memory
+memory      | own    | tenant      | Tapestry plugin @ hearth.pins, provision | plugin_match:tapestry
+channel     | own    | tenant      | Front Desk plugin @ hearth.pins, provision | plugin_match:frontdesk
+channel_home| own    | tenant      | frontdesk join (Will)    | frontdesk_home
+other_plugins| own   | tenant      | -                        | other_plugins
 sudo        | absent | -           | -                        | no_sudo
 judge       | own    | root        | provision (/opt/hearth)  | judge_not_tenant

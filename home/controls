@@ -212,10 +212,10 @@ cp "$here/inventory" "$t/inventory"
 memreset() { chmod -R u+rwx "$m" 2>/dev/null; rm -rf "$m"; mkdir -p "$m/.claude/projects/-home-x"; }
 memrun() { "$t/memc" --no-model > "$t/out" 2>&1; }
 memred() { # name: expect memory RED (present, or couldn't look) in the current scratch home
-  memrun; expect "memory: $1 is RED" $(grep -qE '^RED    memory .*(memory present|couldn.t look|can.t read|can.t rule out)' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+  memrun; expect "memory: $1 is RED" $(grep -qE '^RED    cc_memory   .*(memory present|couldn.t look|can.t read|can.t rule out)' "$t/out"; echo $?) "$(grep ' cc_memory ' "$t/out")"
 }
 memreset; memrun
-expect "memory: empty scratch home is ABSENT" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+expect "memory: empty scratch home is ABSENT" $(grep -q '^ABSENT cc_memory ' "$t/out"; echo $?) "$(grep ' cc_memory ' "$t/out")"
 memreset; mkdir -p "$m/.claude/projects/-home-x/memory"; echo "user prefers tabs" > "$m/.claude/projects/-home-x/memory/MEMORY.md"
 memred "an auto-memory file"
 memreset; echo "remember this" > "$m/CLAUDE.md"; memred "a home CLAUDE.md"
@@ -243,7 +243,7 @@ memreset; echo '{"autoMemoryEnabled": false, // not json' > "$m/.claude/settings
 memreset; mkfifo "$m/.claude/settings.json"
 timeout 20 "$t/memc" --no-model > "$t/out" 2>&1; frc=$?
 expect "memory: a FIFO settings.json is RED and check returns" \
-  $([ $frc != 124 ] && grep -qE '^RED    memory .*not a regular file' "$t/out"; echo $?) "rc=$frc $(grep ' memory ' "$t/out")"
+  $([ $frc != 124 ] && grep -qE '^RED    cc_memory   .*not a regular file' "$t/out"; echo $?) "rc=$frc $(grep ' cc_memory ' "$t/out")"
 # a sparse 1 GiB settings.json: costs the tenant no disk, but an unbounded read costs the judge RAM.
 # Under ulimit -v, so the bound itself is tested, not just the verdict: an unbounded read with the
 # same length check still says "too large" when memory is free, but here it can't allocate and
@@ -251,12 +251,12 @@ expect "memory: a FIFO settings.json is RED and check returns" \
 memreset; truncate -s 1G "$m/.claude/settings.json"
 ( ulimit -v 262144; "$t/memc" --no-model ) > "$t/out" 2>&1
 expect "memory: a 1 GiB sparse settings.json is RED as too large, within 256 MiB" \
-  $(grep -qE '^RED    memory .*too large' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+  $(grep -qE '^RED    cc_memory   .*too large' "$t/out"; echo $?) "$(grep ' cc_memory ' "$t/out")"
 memreset; echo '{"autoMemoryEnabled": false, "env": {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}}' > "$m/.claude/settings.json"; memrun
-expect "memory: provision's settings.json alone is still ABSENT" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+expect "memory: provision's settings.json alone is still ABSENT" $(grep -q '^ABSENT cc_memory ' "$t/out"; echo $?) "$(grep ' cc_memory ' "$t/out")"
 memreset; sed 's/| no_memory$/| declared_absent/' "$here/inventory" > "$t/inventory"; memrun
 expect "memory: declared_absent in place of no_memory is RED as required" \
-  $(grep -q '^RED    memory .*required as memory:no_memory' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+  $(grep -q '^RED    cc_memory   .*required as cc_memory:no_memory' "$t/out"; echo $?) "$(grep ' cc_memory ' "$t/out")"
 cp "$here/inventory" "$t/inventory"; memreset
 
 # 18. what the loaned login reaches is KNOWN, never GREEN: synced skills are listed by name (tenant
@@ -269,7 +269,7 @@ printf -- '---\nname: import-memory\n---\nbody\n' > "$s/0b1c/SKILL.md"
 printf -- '---\nname: x\033[31mred\n---\n' > "$s/9f2e/SKILL.md"; l=$(loanrun)
 expect "loan: synced skills KNOWN by name, escape bytes stripped" \
   $(echo "$l" | grep -qE '^KNOWN  loan_reach .*skills synced: 2 \[import-memory x31mred\]' && ! echo "$l" | grep -q $'\033'; echo $?) "$(echo "$l" | cat -v)"
-expect "loan: synced skills don't make memory RED" $(grep -q '^ABSENT memory ' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+expect "loan: synced skills don't make memory RED" $(grep -q '^ABSENT cc_memory ' "$t/out"; echo $?) "$(grep ' cc_memory ' "$t/out")"
 if [ "$(id -u)" = 0 ]; then echo "SKIP loan mode-000: root reads a mode-000 dir"; fail=1
 else
 memreset; mkdir -p "$m/.claude/skills/synced/0b1c"; chmod 000 "$m/.claude/skills/synced"; l=$(loanrun)
@@ -283,5 +283,32 @@ expect "loan: a FIFO SKILL.md reads as '?' and check returns" \
 memreset; grep -v '^loan_reach ' "$here/inventory" > "$t/inventory"; l=$(loanrun)
 expect "loan: dropping the line is RED as required" $(echo "$l" | grep -q 'required as loan_reach:loan_reach'; echo $?) "$l"
 cp "$here/inventory" "$t/inventory"; memreset
+
+# 19. Hearth's plugin items (docs/decisions/0009). check hands them to hearth.tenantcheck in the
+# root venv, whose own tests cover the judging; these hold check's side. A stand-in interpreter
+# answers with a fixed exit code, so no venv or tenant is needed.
+sed "s#^HEARTH_PY=/opt/hearth/venv/bin/python#HEARTH_PY=$t/fakepy#" "$t/check" > "$t/plc"; chmod +x "$t/plc"
+grep -q "^HEARTH_PY=$t/fakepy" "$t/plc" || { echo "FAIL could not retarget HEARTH_PY"; fail=1; }
+fake() { printf '#!/bin/sh\necho "stand-in $*"\nexit %s\n' "$1" > "$t/fakepy"; chmod +x "$t/fakepy"; }
+fake 5; cp "$here/inventory" "$t/inventory"; rc=$(run "$t/plc")
+expect "plugins: PENDING prints PENDING" \
+  $(grep -q '^PENDING channel_home .*stand-in -I -m hearth.tenantcheck frontdesk_home' "$t/out"; echo $?) "$(grep channel_home "$t/out")"
+# rc alone, on a one-item run (other items are RED wherever this runs, so the full run's rc says
+# nothing): GREEN must exit 0 and PENDING must not.
+sed 's/^REQUIRED=".*"$/REQUIRED="channel_home:frontdesk_home"/' "$t/plc" > "$t/pl1"; chmod +x "$t/pl1"
+grep '^channel_home' "$here/inventory" > "$t/inventory"
+fake 0; rc0=$(run "$t/pl1"); fake 5; rc5=$(run "$t/pl1")
+expect "plugins: PENDING alone fails the run, GREEN alone passes" $([ "$rc0" = 0 ] && [ "$rc5" != 0 ]; echo $?) "GREEN rc=$rc0, PENDING rc=$rc5"
+cp "$here/inventory" "$t/inventory"
+fake 4; rc=$(run "$t/plc")
+expect "plugins: KNOWN prints KNOWN" $(grep -q '^KNOWN  other_plugins ' "$t/out"; echo $?) "$(grep other_plugins "$t/out")"
+fake 0; rc=$(run "$t/plc")
+expect "plugins: each row asks for its own plugin" \
+  $(grep -q '^GREEN  memory .*plugin_match tapestry' "$t/out" && grep -q '^GREEN  channel .*plugin_match frontdesk' "$t/out"; echo $?) "$(grep -E ' (memory|channel) ' "$t/out")"
+sed 's/| plugin_match:tapestry$/| plugin_match:frontdesk/' "$here/inventory" > "$t/inventory"; rc=$(run "$t/plc")
+expect "plugins: memory judging frontdesk instead is RED as required" \
+  $(grep -q '^RED    memory .*required as memory:plugin_match:tapestry' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
+rm -f "$t/fakepy"; cp "$here/inventory" "$t/inventory"; rc=$(run "$t/plc")
+expect "plugins: no root venv is RED, not skipped" $(grep -q '^RED    memory .*no .*fakepy (provision step 5b)' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
 
 exit $fail

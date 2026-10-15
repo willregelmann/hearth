@@ -69,6 +69,12 @@ def main(argv=None) -> int:
     if len(a) == 1 and a[0] == "render":
         sys.stdout.write(render())
         return 0
+    if len(a) == 1 and a[0] == "exports":
+        # one line per plugin, for provision's reference exports: name url commit subdir-or-.
+        p = _pins.pins()
+        for name, subdir in PLUGINS.items():
+            print(name, p[name]["url"], p[name]["commit"], subdir or ".")
+        return 0
     if len(a) == 2 and a[0] == "write":
         try:
             print(f"{write(Path(a[1]))} {Path(a[1]) / FILE}")
@@ -76,7 +82,8 @@ def main(argv=None) -> int:
             print(f"STOP: {e}", file=sys.stderr)
             return 1
         return 0
-    print("usage: python -m hearth.marketplace render | write DIR", file=sys.stderr)
+    usage = "usage: python -m hearth.marketplace render | exports | write DIR"
+    print(usage, file=sys.stderr)
     return 2
 
 

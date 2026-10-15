@@ -39,7 +39,7 @@ def export(url: str, commit: str, subdir: str, dest: Path) -> None:
         git = ["git", "-C", tmp, "-c", "advice.detachedHead=false"]
         subprocess.run(["git", "init", "-q", tmp], check=True)
         subprocess.run(git + ["fetch", "-q", "--depth", "1", url, commit], check=True)
-        tree = f"{commit}:{subdir}" if subdir else commit
+        tree = f"{commit}:{subdir}" if subdir and subdir != "." else commit
         part = dest.with_name(dest.name + ".part")
         part.mkdir(parents=True)
         archive = subprocess.Popen(git + ["archive", "--format=tar", tree], stdout=subprocess.PIPE)
