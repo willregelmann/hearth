@@ -135,10 +135,18 @@ def compare(expected: Path, installed: Path) -> list[str]:
 
 def main(argv=None) -> int:
     """compare EXPECTED INSTALLED: prints each difference; exit 0 identical, 1 different,
-    2 couldn't look."""
+    2 couldn't look.  export URL COMMIT SUBDIR DEST: write the reference tree (SUBDIR may be '')."""
     a = list(sys.argv[1:] if argv is None else argv)
+    if len(a) == 5 and a[0] == "export":
+        try:
+            export(a[1], a[2], a[3], Path(a[4]))
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as e:
+            print(f"STOP: export failed: {e}", file=sys.stderr)
+            return 1
+        return 0
     if len(a) != 3 or a[0] != "compare":
-        print("usage: python -m hearth.plugintree compare EXPECTED INSTALLED", file=sys.stderr)
+        print("usage: python -m hearth.plugintree compare EXPECTED INSTALLED | "
+              "export URL COMMIT SUBDIR DEST", file=sys.stderr)
         return 2
     try:
         found = compare(Path(a[1]), Path(a[2]))
