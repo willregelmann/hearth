@@ -14,7 +14,10 @@ B=$(mktemp); cp -p $F $B
 # the restore leaves $F MUTATED on disk, where it reads as a real defect in reviewed code.
 # SIGKILL cannot be trapped; this covers TERM/INT/HUP and the ordinary exit paths.
 restore() {
-  if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; rm -f "$B"; fi
+  if [ -n "${B:-}" ] && [ -f "$B" ]; then
+    cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F" >&2
+    rm -f "$B"
+  fi
   return 0
 }
 trap restore EXIT
