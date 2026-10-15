@@ -17,7 +17,7 @@ What Hearth uses today:
 
 * **Turns:** Claude Code.
 * **Household channel:** Google Chat. It's what the household actually uses; Britta reaches Wren there and doesn't know Front Desk exists (Wren). The mapping between Chat spaces and thread names and Hearth's thread ids belongs here, not in the map.
-* **Agent-to-agent channel:** Front Desk is the target. Will, 2026-10-02: "Well, my eventual goal is to replace our messaging toolkit with Front Desk, so maybe we should just keep that in mind rather than modifying Hermes Agent any further". That is a goal for Hermes' messaging, not a requirement on Hearth.
+* **Agent-to-agent channel:** Front Desk is the target. Will, 2026-10-02: "Well, my eventual goal is to replace our messaging toolkit with Front Desk, so maybe we should just keep that in mind rather than modifying Hermes Agent any further". That is a goal for Hermes' messaging, not a requirement on Hearth. *Superseded by [0009](0009-tapestry-and-front-desk-are-pinned-imports-front-desk-carries-agent-traffic-now.md): Front Desk is Hearth's agent-to-agent channel now, imported as a pinned dependency.*
 * **Memory store:** Tapestry.
 
 ### Consequences
