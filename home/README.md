@@ -33,6 +33,13 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   `judge` line asserts the tenant can't write them or any directory above them. It follows the choices
   put to Will: a per-tenant Claude Code pinned to 2.1.288, Claude Code's own memory declared absent
   (`cc_memory`), and no sudo.
+- The pinned binary comes from root's store, `/opt/hearth/claude/<version>`, never from another
+  user's install (Claude Code's updater pruned Will's copy, #60). provision downloads it from
+  Anthropic's release URL into the store once, keeps it only if it hashes to the sha256 Anthropic's
+  manifest publishes for that version (pinned in provision), and checks owner, mode and hash on
+  every later run, stopping rather than replacing anything. A tenant's existing copy is judged by
+  the same pinned hash. A copy placed in the store by hand (e.g. offline) is accepted on the same
+  terms. `store-controls` tests this block without root; `store-arms.sh` shows each guard matters.
 - Hearth's plugins (docs/decisions/0009). `provision` builds three root-owned, tenant-read-only
   things under /opt/hearth: `venv` (hearth with frontdesk and tapestry at the pins), `marketplace`
   (a directory marketplace generated from `hearth.pins`) and `plugins/<name>/<sha>` (git's tree at

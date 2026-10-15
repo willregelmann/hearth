@@ -14,7 +14,7 @@
 # so provision prints the command and Will runs it himself.
 #
 # Choices this follows (asked of Will; changing any of them is a small edit):
-#   - Claude Code per tenant, copied from Will's pinned native install, with auto-update off
+#   - Claude Code per tenant, copied from root's sha256-checked store of the pinned version, with auto-update off
 #   - memory declared absent in v0
 #   - no sudo for the tenant
 set -euo pipefail
@@ -22,7 +22,13 @@ set -euo pipefail
 DRY=0; [ "${1:-}" = "--dry-run" ] && { DRY=1; shift; }
 T=${1:?usage: provision [--dry-run] <tenant>}
 CLAUDE_VERSION=2.1.288
-CLAUDE_SRC=/home/will/.local/share/claude/versions/$CLAUDE_VERSION
+# Root's own copy of the pinned binary, checked against Anthropic's published sha256 for this
+# version (https://downloads.claude.ai/claude-code-releases/2.1.288/manifest.json, linux-x64). The
+# old source, Will's ~/.local/share/claude/versions, is pruned by Claude Code's own updater (#60).
+CLAUDE_SHA256=0298068b686e7fdbaf9402a7a587bb7f49c0b0e084de09f69145a0719207640c
+CLAUDE_URL=https://downloads.claude.ai/claude-code-releases/$CLAUDE_VERSION/linux-x64/claude
+CLAUDE_STORE=/opt/hearth/claude; STORE_OWNER=root
+CLAUDE_SRC=$CLAUDE_STORE/$CLAUDE_VERSION
 EXTRA_GROUPS=agents
 READER=will                       # gets --x on the home, so it can read the published ledger
 
@@ -89,18 +95,39 @@ run chmod 700 "$H"
 run setfacl -b "$H"
 run setfacl -m "u:$READER:--x" "$H"
 
-# 3. Claude Code, the tenant's own copy of the pinned version.
-if [ ! -x "$CLAUDE_SRC" ]; then
-  [ $DRY = 1 ] && echo "! (dry run) $CLAUDE_SRC not visible from here" || \
-    die "$CLAUDE_SRC not found; is Will's install still at $CLAUDE_VERSION?"
+# 3. Claude Code, the tenant's own copy of the pinned version, copied from root's store.
+#    The store is seeded once from Anthropic's download and verified on every run: a file there that
+#    doesn't hash to CLAUDE_SHA256 is a STOP, never replaced. No tenant's file is in this path.
+sha_ok() { [ "$(sha256sum < "$1" | cut -d' ' -f1)" = "$CLAUDE_SHA256" ]; }
+# root's: owned by STORE_OWNER and writable by nobody else, as the entry itself (stat doesn't follow
+# links). A link's own mode is always 0777 on Linux, so this rejects every link too.
+rootish() { [ "$(stat -c %U "$1")" = "$STORE_OWNER" ] && [ $(( 8#$(stat -c %a "$1") & 8#022 )) = 0 ]; }
+if [ -e "$CLAUDE_STORE" ] || [ -L "$CLAUDE_STORE" ]; then
+  [ -d "$CLAUDE_STORE" ] && rootish "$CLAUDE_STORE" || die "$CLAUDE_STORE isn't a $STORE_OWNER-owned directory only $STORE_OWNER can write; fix by hand"
+fi
+if [ -e "$CLAUDE_SRC" ] || [ -L "$CLAUDE_SRC" ]; then
+  [ -f "$CLAUDE_SRC" ] && rootish "$CLAUDE_SRC" \
+    || die "$CLAUDE_SRC isn't a $STORE_OWNER-owned regular file only $STORE_OWNER can write; fix by hand"
+  sha_ok "$CLAUDE_SRC" || die "$CLAUDE_SRC doesn't hash to $CLAUDE_SHA256; replace it by hand"
+  echo "= $CLAUDE_SRC present, sha256 ok"
+elif [ $DRY = 1 ]; then
+  echo "+ download $CLAUDE_URL -> $CLAUDE_SRC ($STORE_OWNER 755), kept only if its sha256 is $CLAUDE_SHA256"
+else
+  [ -d "$CLAUDE_STORE" ] || install -d -m 755 "$CLAUDE_STORE"
+  part=$(mktemp "$CLAUDE_STORE/.$CLAUDE_VERSION.XXXXXX")
+  curl -sS --fail --proto =https -o "$part" "$CLAUDE_URL" || { rm -f "$part"; die "download of $CLAUDE_URL failed"; }
+  sha_ok "$part" || { rm -f "$part"; die "$CLAUDE_URL doesn't hash to $CLAUDE_SHA256; not installed"; }
+  chown "$STORE_OWNER:" "$part"; chmod 755 "$part"; mv "$part" "$CLAUDE_SRC"
+  echo "+ $CLAUDE_SRC downloaded, sha256 ok"
 fi
 vdir=$H/.local/share/claude/versions
 dst=$vdir/$CLAUDE_VERSION
 link=$H/.local/bin/claude
 nolink "$H/.local" "$H/.local/share" "$H/.local/share/claude" "$vdir" "$dst" "$H/.local/bin"
 if tq test -e "$dst"; then
-  tq cmp -s - "$dst" < "$CLAUDE_SRC" || die "$dst exists and differs from $CLAUDE_SRC"
-  echo "= $dst present"
+  # judged by the pinned hash, not by the store, so a dry run can judge it before the store exists
+  [ "$(tq sha256sum "$dst" | cut -d' ' -f1)" = "$CLAUDE_SHA256" ] || die "$dst doesn't hash to $CLAUDE_SHA256 (the pinned $CLAUDE_VERSION)"
+  echo "= $dst present, sha256 ok"
 else
   as_t mkdir -p "$vdir" "$H/.local/bin"
   nolink "$H/.local" "$H/.local/share" "$H/.local/share/claude" "$vdir" "$H/.local/bin"

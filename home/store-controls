@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# home/store-controls: controls for provision's step 3 store (/opt/hearth/claude/<version>, #60).
+# Runs the step-3 store block, extracted from provision as written, against a scratch store owned by
+# the caller, with a stub curl on PATH and a fake binary whose sha256 is the pin. Needs no root and
+# no network. Each guard's control must fail with the guard removed (store-arms in the PR body).
+set -u
+# Fixtures are made with mkdir/cp, so their modes follow the umask; under 0002 the store dir would be
+# 775 and the dir guard would fire before the guard a control means to test (Ash on #79). Pin it.
+umask 022
+here=$(dirname "$(readlink -f "$0")")
+t=$(mktemp -d); trap 'chmod -R u+w "$t" 2>/dev/null; rm -rf "$t"' EXIT
+fail=0
+expect() { if [ "$2" = 0 ]; then echo "ok   $1"; else echo "FAIL $1: $3"; fail=1; fi; }
+
+block=$(sed -n '/^sha_ok() /,/^vdir=/p' "$here/provision" | sed '$d')
+[ -n "$block" ] && echo "$block" | grep -q 'curl ' || { echo "FAIL could not extract step 3's store block"; exit 1; }
+printf 'fake claude\n' > "$t/good"; printf 'tampered\n' > "$t/bad"
+SHA=$(sha256sum < "$t/good" | cut -d' ' -f1)
+mkdir "$t/bin"
+# stub curl: writes $STUB_SRC to the -o target, or fails when STUB_FAIL=1
+cat > "$t/bin/curl" <<'EOF'
+#!/bin/sh
+out=; while [ $# -gt 0 ]; do [ "$1" = -o ] && { out=$2; shift; }; shift; done
+[ "${STUB_FAIL:-0}" = 1 ] && { echo "curl: (22) stub failure" >&2; exit 22; }
+cat "$STUB_SRC" > "$out"
+EOF
+chmod +x "$t/bin/curl"
+{ printf 'set -euo pipefail\n'
+  printf 'die() { echo "STOP: $*" >&2; exit 1; }\n'
+  printf 'CLAUDE_VERSION=2.1.288; CLAUDE_SHA256=%s; CLAUDE_URL=https://example.invalid/claude\n' "$SHA"
+  printf 'CLAUDE_STORE=%s/store; STORE_OWNER=%s; CLAUDE_SRC=$CLAUDE_STORE/$CLAUDE_VERSION\n' "$t" "$(id -un)"
+  printf 'DRY=${DRY:-0}\n'
+  printf '%s\n' "$block"; } > "$t/step3"
+run() { PATH="$t/bin:$PATH" STUB_SRC="${STUB_SRC:-$t/good}" bash "$t/step3" > "$t/out" 2>&1; echo $?; }
+S=$t/store; F=$S/2.1.288
+reset() { chmod -R u+w "$S" 2>/dev/null; rm -rf "$S"; }
+parts() { ls -A "$S" 2>/dev/null | grep -c '^\.2\.1\.288\.' ; }
+
+reset; rc=$(DRY=1 run)
+expect "dry run, empty store: prints the download and creates nothing" \
+  $([ "$rc" = 0 ] && grep -q '^+ download ' "$t/out" && [ ! -e "$S" ]; echo $?) "rc=$rc $(cat "$t/out")"
+reset; rc=$(run)
+expect "empty store: downloads, keeps it at 755, rc 0" \
+  $([ "$rc" = 0 ] && cmp -s "$F" "$t/good" && [ "$(stat -c %a "$F")" = 755 ] && [ "$(parts)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
+rc=$(run)
+expect "second run: present, sha256 ok, untouched" $([ "$rc" = 0 ] && grep -q 'present, sha256 ok' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+reset; rc=$(STUB_SRC=$t/bad run)
+expect "download with the wrong hash: STOP, nothing installed, no part left" \
+  $([ "$rc" != 0 ] && grep -q "doesn't hash to" "$t/out" && [ ! -e "$F" ] && [ "$(parts)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
+reset; rc=$(STUB_FAIL=1 run)
+expect "download fails: STOP, nothing installed, no part left" \
+  $([ "$rc" != 0 ] && grep -q 'download of' "$t/out" && [ ! -e "$F" ] && [ "$(parts)" = 0 ]; echo $?) "rc=$rc $(cat "$t/out")"
+reset; mkdir -p "$S"; cp "$t/bad" "$F"; chmod 755 "$F"; rc=$(run)
+expect "stored file with the wrong hash: STOP on the hash, left as it is" \
+  $([ "$rc" != 0 ] && grep -q "doesn't hash to" "$t/out" && ! grep -q 'directory only' "$t/out" && cmp -s "$F" "$t/bad"; echo $?) "rc=$rc $(cat "$t/out")"
+reset; mkdir -p "$S"; cp "$t/good" "$F"; chmod 775 "$F"; rc=$(run)
+expect "stored file group-writable: STOP on the file guard" $([ "$rc" != 0 ] && grep -q 'regular file only' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+reset; mkdir -p "$S"; cp "$t/good" "$t/elsewhere"; ln -s "$t/elsewhere" "$F"; rc=$(run)
+expect "stored file is a link (to a good copy): STOP on the file guard" $([ "$rc" != 0 ] && grep -q 'regular file only' "$t/out" && ! grep -q 'directory only' "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+reset; mkdir -p "$S"; chmod 777 "$S"; rc=$(run)
+expect "store dir writable by others: STOP before downloading" \
+  $([ "$rc" != 0 ] && grep -q 'directory only' "$t/out" && [ ! -e "$F" ]; echo $?) "rc=$rc $(cat "$t/out")"
+reset; mkdir -p "$t/realstore"; ln -s "$t/realstore" "$S"; rc=$(run)
+expect "store dir is a link: STOP" $([ "$rc" != 0 ] && grep -q 'directory only' "$t/out" && [ ! -e "$t/realstore/2.1.288" ]; echo $?) "rc=$rc $(cat "$t/out")"
+rm -f "$S"
+exit $fail
