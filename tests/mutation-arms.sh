@@ -4,6 +4,32 @@
 set -u
 cd "$(dirname "$0")/.."
 PY=${PY:-.venv/bin/python}
+# Three preconditions, because the summary line is identical whether every arm
+# proved its guard or the suite never ran. With $PY absent, every arm dies on
+# "No such file or directory", the loop greps the output for "failed", the
+# shell's own error supplies that word, and the script prints the IDEAL result.
+command -v "$PY" >/dev/null 2>&1 || [ -x "$PY" ] || {
+  echo "FATAL: PY=$PY is not executable. Point PY at the venv python with the project installed." >&2
+  exit 3
+}
+"$PY" -c 'import hearth.pins' 2>/dev/null || {
+  echo "FATAL: $PY cannot import hearth.pins -- run 'pip install -e .' first." >&2
+  exit 3
+}
+# Importing is NOT sufficient: an editable install leaves the source dir on
+# sys.path for any interpreter run inside the tree, so a venv missing the pinned
+# DEPS imports hearth.pins fine, then fails every test on "not installed in",
+# which the loop reads as RED and again summarises as a perfect score. Requiring
+# the UNARMED suite to be green is the only precondition under which a later red
+# is attributable to the arm rather than to the environment.
+base_out=$(timeout 300 "$PY" -m pytest -q -p no:cacheprovider tests/test_pins.py 2>&1 | tail -1)
+case "$base_out" in
+  *failed*|*error*)
+    echo "FATAL: the suite is not green BEFORE any arm is applied: $base_out" >&2
+    echo "       Fix the environment -- the arms measure nothing until this passes." >&2
+    exit 3 ;;
+esac
+echo "precondition: unarmed suite green ($base_out)"
 F=hearth/pins.py
 B=$(mktemp); cp -p $F $B
 red=0; bad=0
