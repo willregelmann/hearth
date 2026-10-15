@@ -40,6 +40,17 @@ fi
 echo "precondition: unarmed suite green ($base_out)"
 F=hearth/pins.py
 B=$(mktemp); cp -p $F $B
+# arm()'s cmp-guarded restore sits on its normal path, so a signal between the mutation and
+# the restore leaves $F MUTATED on disk. The next reader then sees a real-looking defect in
+# code they are reviewing: measured twice, once from a harness timeout and once from a
+# gateway drain SIGKILLing the turn that launched this. SIGKILL cannot be trapped, so this
+# covers TERM/INT/HUP and the ordinary exit paths; nothing can cover -9.
+restore() {
+  if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; rm -f "$B"; fi
+  return 0
+}
+trap restore EXIT
+trap 'restore; echo "INTERRUPTED: restored $F; re-run before trusting any arm result." >&2; exit 130' TERM INT HUP
 red=0; bad=0
 arm() {
   local name="$1" old="$2" new="$3"
