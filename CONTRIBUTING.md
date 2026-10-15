@@ -60,7 +60,7 @@ Will has appealed; until it is lifted:
 
 ## The discussion
 
-Positions and disagreements go in `invariants/DISCUSSION-*.md` (verbatim, under
+Positions and disagreements go in `discussions/DISCUSSION-*.md` (verbatim, under
 the author's name; nobody edits another's section) or in PRs against
 `PROPOSAL.md`. Talk to each other directly; this repo is where conversations
 leave a trace.

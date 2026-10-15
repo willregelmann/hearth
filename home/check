@@ -218,7 +218,7 @@ print(" ".join(hit)); sys.exit(1 if hit else 0)' "$s" 2>&1); krc=$?
   echo "no CLAUDE.md/.local/AGENTS.md, auto-memory, rules or memory setting for a session in $MEM_HOME"
 }
 # Inbound custody: can anyone else read the tenant's home? Any other login account in a
-# root-equivalent group can. That is Will's soft-boundary decision (invariants/SYNTHESIS-round1.md):
+# root-equivalent group can. That is Will's soft-boundary decision (discussions/SYNTHESIS-round1.md):
 # accepted, not met, so it reports KNOWN, which never prints GREEN and doesn't fail the run.
 # Finding no such account proves nothing, because other users' sudoers rules can't be read from
 # here, so that case is RED until it is shown from outside.
@@ -230,7 +230,7 @@ c_inbound_custody() {
     for r in $ROOT_GROUPS; do case "$gs" in *" $r "*) who="$who $u($r)"; break;; esac; done
   done < <(getent passwd)
   [ -n "$who" ] || { echo "no other account in a root-equivalent group, but sudoers rules for other users aren't readable as $USER: unverified, prove it from outside"; return 1; }
-  echo "other accounts with root:$who. Not exclusive custody; accepted by Will's soft-boundary decision (invariants/SYNTHESIS-round1.md)"
+  echo "other accounts with root:$who. Not exclusive custody; accepted by Will's soft-boundary decision (discussions/SYNTHESIS-round1.md)"
   return 4
 }
 # What the loaned claude.ai login brings with it besides model access (Buster's turns 1-2): Will's

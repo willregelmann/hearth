@@ -62,7 +62,7 @@ check's `sudo` line is RED for any of them, and provision refuses a tenant in on
 are the same, and `controls` fails if they drift apart. Custody has two directions:
 - `custody`: the tenant can't list other homes. GREEN or RED.
 - `custody_in`: no one else can read the tenant's home. Where any other login account is in one
-  of those groups, that fails, by Will's soft-boundary decision (invariants/SYNTHESIS-round1.md:
+  of those groups, that fails, by Will's soft-boundary decision (discussions/SYNTHESIS-round1.md:
   "HOME records a known failure, and nothing is waived"), so it reports KNOWN, naming the
   accounts. Where none is found it is RED, not GREEN: other users' sudoers rules can't be read from
   inside, so absence there is unverified until shown from outside (provision's step 3).
