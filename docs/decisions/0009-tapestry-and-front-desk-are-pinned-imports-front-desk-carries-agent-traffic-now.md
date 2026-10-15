@@ -21,9 +21,9 @@ Chosen option: the third. Import over copy is Will's instruction. The split by c
 
 We read "vendor" in the first message as "take in", and the later "first-class imports" as settling how. Copying the code in, the ordinary sense of vendoring, is the option rejected here.
 
-* **Tapestry and Front Desk are imported, not copied.** Hearth declares each as a dependency pinned to a commit. Hearth's own code uses their interfaces (for example, Hearth's host implements Front Desk's Host protocol) and doesn't keep a second copy of anything they export. Changing a pin is a reviewed change.
+* **Tapestry and Front Desk will be imported, not copied.** Hearth will declare each as a dependency pinned to a commit, in a `pyproject.toml` at the repository root. Neither that file nor Hearth's host exists at the time of this record: `pyproject.toml` is not in the tree, and the host arrives with hearth#55, which is approved but unmerged. Once it does, Hearth's own code will use their interfaces (Hearth's host will implement Front Desk's `Host` protocol) and will not keep a second copy of anything they export. Changing a pin is a reviewed change.
 * **Front Desk is Hearth's channel layer for agent-to-agent traffic now.** Handoffs, direct messages between agents, and alarms (messages an agent holds for itself) go through it.
-* **Household chat stays on Google Chat until Front Desk can reach it.** Front Desk's chat interface today is its own Matrix client. It has no Google Chat path: willregelmann/frontdesk#30 is open, and its Bridge is deferred. Britta reaches Wren on Google Chat (0005). When frontdesk#30 lands, household chat moves to Front Desk, and that move is a new record.
+* **Household chat stays on Google Chat until Front Desk can reach it.** Front Desk's chat interface today is its own Matrix client. It has no Google Chat path: willregelmann/frontdesk#30 is open, and its Bridge is deferred. Britta reaches Wren on Google Chat (0005). The move happens when Front Desk can carry the household, not merely when frontdesk#30 closes: that issue is titled for Will's Google Chat path, and if it ships only his, Britta is still unreachable and this record's trigger is unmet. When Front Desk can reach both, household chat moves, and that move is a new record.
 * "If possible" in Will's first message is a real qualifier. Anything Front Desk can't carry stays where it is, and the record says which and why.
 
 This supersedes 0005's agent-to-agent line only. The rest of 0005 stands: the map still names no product. It's a partial supersession, which [0000](0000-record-decisions-as-madr.md)'s wording doesn't cover. 0005's text is unchanged; the only edit to it is the line under its title naming which part this record replaces.
@@ -36,7 +36,7 @@ This supersedes 0005's agent-to-agent line only. The rest of 0005 stands: the ma
 
 ### Confirmation
 
-A test on a provisioned tenant: the interpreter each plugin runs under is Hearth's, and the version of the package it imports equals Hearth's pin. The test fails if a plugin falls back to its own venv. Review checks that Hearth keeps no copy of either package's code. There's deliberately no name-collision test, because implementing a protocol means defining its names.
+A test on a provisioned tenant, runnable once the pin file and host exist: the interpreter each plugin runs under is Hearth's, and the version of the package it imports equals Hearth's pin. The test fails if a plugin falls back to its own venv. Review checks that Hearth keeps no copy of either package's code. There's deliberately no name-collision test, because implementing a protocol means defining its names.
 
 ## More Information
 
