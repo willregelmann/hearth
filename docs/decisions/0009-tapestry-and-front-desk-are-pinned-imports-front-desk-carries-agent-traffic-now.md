@@ -17,14 +17,16 @@ How does Hearth take in the two packages, and which of its channels does Front D
 
 ## Decision Outcome
 
-Chosen option: the third, because it's Will's instruction, and the second would record a channel Front Desk doesn't have yet.
+Chosen option: the third. Import over copy is Will's instruction. The split by channel and the commit pin are ours: Front Desk can't reach Google Chat yet, and a pin makes a version change reviewable.
+
+We read "vendor" in the first message as "take in", and the later "first-class imports" as settling how. Copying the code in, the ordinary sense of vendoring, is the option rejected here.
 
 * **Tapestry and Front Desk are imported, not copied.** Hearth declares each as a dependency pinned to a commit. Hearth's own code uses their interfaces (for example, Hearth's host implements Front Desk's Host protocol) and doesn't keep a second copy of anything they export. Changing a pin is a reviewed change.
 * **Front Desk is Hearth's channel layer for agent-to-agent traffic now.** Handoffs, direct messages between agents, and alarms (messages an agent holds for itself) go through it.
 * **Household chat stays on Google Chat until Front Desk can reach it.** Front Desk's chat interface today is its own Matrix client. It has no Google Chat path: willregelmann/frontdesk#30 is open, and its Bridge is deferred. Britta reaches Wren on Google Chat (0005). When frontdesk#30 lands, household chat moves to Front Desk, and that move is a new record.
 * "If possible" in Will's first message is a real qualifier. Anything Front Desk can't carry stays where it is, and the record says which and why.
 
-This supersedes 0005's agent-to-agent line only. The rest of 0005 stands: the map still names no product.
+This supersedes 0005's agent-to-agent line only. The rest of 0005 stands: the map still names no product. It's a partial supersession, which [0000](0000-record-decisions-as-madr.md)'s wording doesn't cover. 0005's text is unchanged; the only edit to it is the line under its title naming which part this record replaces.
 
 ### Consequences
 

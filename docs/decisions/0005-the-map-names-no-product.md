@@ -1,5 +1,7 @@
 # The map names no product, and Hearth uses Claude Code, Front Desk, Google Chat and Tapestry today
 
+Agent-to-agent line superseded by ADR-0009.
+
 ## Context and Problem Statement
 
 PROPOSAL.md §4 names Claude Code as the turn engine, Front Desk as every channel, and Tapestry as the memory store. A map that names them makes each one part of what Hearth is. Should the map name the products Hearth is built with?
@@ -17,7 +19,7 @@ What Hearth uses today:
 
 * **Turns:** Claude Code.
 * **Household channel:** Google Chat. It's what the household actually uses; Britta reaches Wren there and doesn't know Front Desk exists (Wren). The mapping between Chat spaces and thread names and Hearth's thread ids belongs here, not in the map.
-* **Agent-to-agent channel:** Front Desk is the target. Will, 2026-10-02: "Well, my eventual goal is to replace our messaging toolkit with Front Desk, so maybe we should just keep that in mind rather than modifying Hermes Agent any further". That is a goal for Hermes' messaging, not a requirement on Hearth. *Superseded by [0009](0009-tapestry-and-front-desk-are-pinned-imports-front-desk-carries-agent-traffic-now.md): Front Desk is Hearth's agent-to-agent channel now, imported as a pinned dependency.*
+* **Agent-to-agent channel:** Front Desk is the target. Will, 2026-10-02: "Well, my eventual goal is to replace our messaging toolkit with Front Desk, so maybe we should just keep that in mind rather than modifying Hermes Agent any further". That is a goal for Hermes' messaging, not a requirement on Hearth.
 * **Memory store:** Tapestry.
 
 ### Consequences
