@@ -54,7 +54,7 @@ trap 'restore; echo "INTERRUPTED: restored $F; re-run before trusting any arm re
 red=0; bad=0
 arm() {
   local name="$1" old="$2" new="$3"
-  $PY - "$F" "$old" "$new" <<'EOF'
+  $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED"; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
 assert s.count(old) == 1, f"anchor not unique: {old!r}"; open(p, "w").write(s.replace(old, new))
 EOF
