@@ -239,6 +239,97 @@ def test_writable_by_me_sees_a_writable_path_and_a_root_one(tmp_path):
         assert tenantcheck._writable_by_me(Path("/usr/bin/env")) == []
 
 
+# Will's run of check on Buster, 2026-10-15 ~21:41Z: "RED memory writable by this tenant:
+# /opt/hearth/venv/bin/python", where python -> python3 -> /usr/bin/python3, all root's. A symlink's
+# own mode is 0777, so access(link, W_OK, follow_symlinks=False) is True for every user.
+needs_nonroot = pytest.mark.skipif(os.getuid() == 0, reason="root can write everything")
+ROOT_LINK = Path("/usr/bin/python3")
+
+
+@needs_nonroot
+@pytest.mark.skipif(not ROOT_LINK.is_symlink(), reason="/usr/bin/python3 isn't a symlink here")
+def test_a_root_owned_symlink_to_a_root_owned_interpreter_is_not_writable():
+    assert tenantcheck._writable_by_me(ROOT_LINK) == []
+
+
+@needs_nonroot
+@pytest.mark.skipif(not ROOT_LINK.is_symlink(), reason="/usr/bin/python3 isn't a symlink here")
+def test_green_plugin_match_with_a_venv_python_that_is_a_root_symlink(tenant):
+    """The real writability check on the interpreter, with the fixture's root side (in tmp) excused:
+    a venv python that's a link into /usr/bin is GREEN."""
+    tenant.hearth_py = str(ROOT_LINK)
+    tenant.writable = lambda p: [] if str(p).startswith(str(tenant.ref.parent)) \
+        else tenantcheck._writable_by_me(p)
+    _settings(tenant, lambda s: (s["env"].update(TAPESTRY_PYTHON=str(ROOT_LINK)),
+                                 s["pluginConfigs"]["frontdesk@hearth"]["options"].update(python=str(ROOT_LINK))))
+    found = tenantcheck._writable_by_me(ROOT_LINK)
+    rc, msg = tenantcheck.plugin_match(tenant, "tapestry")
+    assert found == [] and "writable by this tenant" not in msg, msg
+
+
+@needs_nonroot
+def test_red_a_link_whose_target_the_tenant_can_write(tmp_path):
+    """The link is what runs, but the target is what executes: a writable target is RED."""
+    target = tmp_path / "mine" / "python"
+    target.parent.mkdir()
+    target.write_text("#!/bin/sh\n")
+    link = tmp_path / "venv" / "python"
+    link.parent.mkdir()
+    link.symlink_to(target)
+    assert str(target) in tenantcheck._writable_by_me(link)
+
+
+@needs_nonroot
+def test_red_an_intermediate_hop_in_a_writable_directory(tmp_path):
+    """python -> <hopdir>/python3 -> /usr/bin/python3: the final target is root's, but the middle
+    hop sits in a directory the tenant can write, so it can be repointed."""
+    hopdir = tmp_path / "hop"
+    hopdir.mkdir()
+    (hopdir / "python3").symlink_to("/usr/bin/python3")
+    link = tmp_path / "python"
+    link.symlink_to(hopdir / "python3")
+    found = tenantcheck._writable_by_me(link)
+    assert str(hopdir) in found and not any(f.startswith("/usr") for f in found), found
+
+
+@needs_nonroot
+def test_red_a_link_chain_met_at_an_ancestor(tmp_path):
+    """Ash on #85, R1: a -> d/e, d/e -> f, then a/x. d is writable and nothing else on the chain is,
+    so d must be flagged. realpath(a) collapses straight to f and would hide d."""
+    d, f = tmp_path / "d", tmp_path / "f"
+    d.mkdir()
+    f.mkdir()
+    (f / "x").write_text("")
+    (d / "e").symlink_to(f)
+    (tmp_path / "a").symlink_to(d / "e")
+    for q in (f / "x", f):
+        q.chmod(0o555 if q.is_dir() else 0o444)
+    found = tenantcheck._writable_by_me(tmp_path / "a" / "x")
+    assert str(d) in found and str(f) not in found and str(f / "x") not in found, found
+
+
+@needs_nonroot
+def test_dotdot_after_a_link_applies_to_the_link_s_real_directory(tmp_path):
+    """via -> real/b, then via/../c/x. The kernel resolves via first, so '..' lands in real and the
+    file is real/c/x. Normalising the path as typed would give <tmp>/c/x, a different place."""
+    real = tmp_path / "real"
+    (real / "b").mkdir(parents=True)
+    (real / "c").mkdir()
+    (real / "c" / "x").write_text("")
+    (tmp_path / "via").symlink_to(real / "b")
+    found = tenantcheck._writable_by_me(Path(f"{tmp_path}/via/../c/x"))
+    assert str(real / "c" / "x") in found and str(tmp_path / "c") not in found, found
+
+
+@needs_nonroot
+def test_red_a_linked_ancestor_dir_in_a_writable_directory(tmp_path):
+    """<tmp>/bin -> /usr/bin, then <tmp>/bin/python3.12: /usr/bin is root's, but the link named bin
+    sits in a writable directory and can be pointed elsewhere."""
+    (tmp_path / "bin").symlink_to("/usr/bin")
+    found = tenantcheck._writable_by_me(tmp_path / "bin" / "python3.12")
+    assert str(tmp_path) in found and not any(f.startswith("/usr") for f in found), found
+
+
 @pytest.mark.parametrize("bad", ["fifo", "huge", "not json", "link"])
 def test_red_settings_that_can_t_be_read(tenant, bad, tmp_path):
     f = tenant.cfg / "settings.json"

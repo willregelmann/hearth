@@ -108,14 +108,45 @@ class Tenant:
 
 
 def _writable_by_me(p: Path) -> list[str]:
-    out = []
-    p = Path(p)
-    while True:
-        if os.access(p, os.W_OK, follow_symlinks=False):
-            out.append(str(p))
-        if p == p.parent:
-            return out
-        p = p.parent
+    """Every place this user could write to change what `p` runs: the real file it resolves to, and
+    the real directory holding every component met while resolving it, links included, wherever in
+    the path they are. A symlink's own mode is 0777 on Linux, so asking access() about a link says
+    "writable" to everyone; a link can only be replaced by writing the directory it sits in, so that
+    directory is what's asked instead.
+
+    Resolution is component by component, as the kernel does it: a link met anywhere (leaf or
+    ancestor) has its target spliced in and resolved the same way, so every hop's directory is seen.
+    realpath() would collapse a chain met at an ancestor and hide its middle hops."""
+    found: list[Path] = []
+
+    def add(q: Path):
+        if q not in found:
+            found.append(q)
+
+    start = Path(p) if os.path.isabs(p) else Path.cwd() / p
+    parts = list(start.parts[1:])
+    cur, hops = Path("/"), 0
+    add(cur)
+    while parts:
+        name = parts.pop(0)
+        if name in ("", "."):
+            continue
+        if name == "..":
+            cur = cur.parent
+            continue
+        nxt = cur / name
+        if nxt.is_symlink():
+            hops += 1
+            if hops > 40:
+                return [f"{p}: more than 40 links"]
+            t = Path(os.readlink(nxt))
+            parts = list(t.parts[1:] if t.is_absolute() else t.parts) + parts
+            if t.is_absolute():
+                cur = Path("/")
+            continue
+        cur = nxt
+        add(cur)
+    return [str(q) for q in found if os.access(q, os.W_OK)]
 
 
 def plugin_match(t: Tenant, name: str):

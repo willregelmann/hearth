@@ -81,6 +81,18 @@ arm "settings.local.json loses to settings.json" $T \
   '        return _merge(s, local)' '        return _merge(local, s)'
 arm "frontdesk home judged by string prefix of the unresolved home" $T \
   '    if real == h or not real.is_relative_to(h):' '    if not str(real).startswith(str(t.home) + "/"):'
+arm "access() on the link itself (the Buster false RED)" $T \
+  '    return [str(q) for q in found if os.access(q, os.W_OK)]' '    return [str(q) for q in found if os.access(q, os.W_OK)] + ([str(p)] if Path(p).is_symlink() and os.access(p, os.W_OK, follow_symlinks=False) else [])'
+arm "the final target not checked" $T \
+  '        cur = nxt
+        add(cur)' '        cur = nxt
+        add(cur) if parts else None'
+arm "a link met at an ancestor collapsed by realpath (#85 R1)" $T \
+  '        if nxt.is_symlink():' '        if nxt.is_symlink() and not parts:
+            cur = Path(os.path.realpath(nxt)); add(cur); continue
+        if nxt.is_symlink():'
+arm "the path normalised as typed before resolving links" $T \
+  '    start = Path(p) if os.path.isabs(p) else Path.cwd() / p' '    start = Path(os.path.normpath(Path(p) if os.path.isabs(p) else Path.cwd() / p))'
 arm "marketplace overwrites a different file" $M \
   '        raise RuntimeError(f"{path} exists and differs' '        return "present"; raise RuntimeError(f"{path} exists and differs'
 arm "marketplace serves an extra pin" $M \
