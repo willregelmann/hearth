@@ -15,7 +15,8 @@ red=0; bad=0
 CUR_F=""; CUR_B=""
 restore() {
   if [ -n "${CUR_B:-}" ] && [ -f "$CUR_B" ] && [ -n "${CUR_F:-}" ]; then
-    cp -p "$CUR_B" "$CUR_F"; rm -f "$CUR_B"
+    cp -p "$CUR_B" "$CUR_F"; cmp -s "$CUR_B" "$CUR_F" || echo "RESTORE FAILED $CUR_F" >&2
+    rm -f "$CUR_B"
   fi
   CUR_F=""; CUR_B=""
   return 0
