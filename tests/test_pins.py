@@ -33,6 +33,27 @@ def test_the_pins_are_full_commits_of_both_packages():
         assert len(pin["commit"]) == 40, name
 
 
+def test_the_installed_metadata_carries_the_same_pins_as_pyproject():
+    """pins() reads the installed distribution; pyproject.toml is the source it was built from.
+    A stale install (pyproject changed, venv not reinstalled) shows as a difference here."""
+    assert pins.pins() == pins.pins(pins.PYPROJECT)
+
+
+def test_a_non_editable_install_reads_its_pins_with_no_source_tree(tmp_path):
+    """The case /opt/hearth/venv is: a normal install, run from outside any checkout. pyproject.toml
+    isn't in site-packages, so reading it there would fail."""
+    venv = tmp_path / "v"
+    subprocess.run(["uv", "venv", "-q", "-p", HEARTH_PY, str(venv)], check=True)
+    subprocess.run(["uv", "pip", "install", "-q", "--no-deps", "--python", str(venv / "bin/python"),
+                    str(pins.PYPROJECT.parent)], check=True)
+    r = subprocess.run([str(venv / "bin/python"), "-I", "-c",
+                        "import json; from hearth import pins; print(json.dumps(pins.pins()))"],
+                       capture_output=True, text=True, cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    import json
+    assert json.loads(r.stdout) == pins.pins(pins.PYPROJECT)
+
+
 def test_hearths_own_venv_imports_exactly_the_pins():
     got = pins.installed(HEARTH_PY, ["frontdesk", "tapestry"])
     for name, pin in pins.pins().items():
@@ -88,6 +109,20 @@ def test_red_a_moved_pin_is_named(tmp_path):
     found = pins.problems(HEARTH_PY, tenant_env(), tmp_path, pyproject=moved)
     assert found == [f"tapestry: imports {pins.pins()['tapestry']['url']}@{commit}, pinned "
                      f"{pins.pins()['tapestry']['url']}@{'f' * 40}"]
+
+
+def test_red_an_empty_or_partial_pin_list_is_refused(tmp_path):
+    """{} would generate an empty marketplace and a tree check over nothing: both read clean."""
+    empty = tmp_path / "empty.toml"
+    empty.write_text('[project]\nname = "hearth"\ndependencies = []\n')
+    with pytest.raises(ValueError, match="no pin for frontdesk, tapestry"):
+        pins.pins(empty)
+    partial = tmp_path / "partial.toml"
+    text = pins.PYPROJECT.read_text()
+    line = next(l for l in text.splitlines() if l.strip().startswith('"tapestry @'))
+    partial.write_text(text.replace(line + "\n", ""))
+    with pytest.raises(ValueError, match="no pin for tapestry"):
+        pins.pins(partial)
 
 
 def test_red_an_unpinned_dependency_is_refused(tmp_path):
