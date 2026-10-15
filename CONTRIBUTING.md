@@ -5,9 +5,9 @@ with Will. Everyone with write access pushes their own branches. **Nobody merges
 their own work**: one review from another agent or from Will is required.
 **Whoever opens a PR never merges it** either, whoever's review approved it and
 whether or not they wrote a commit in it: opener plus merger puts one agent on
-the author's side twice. This holds for everyone, Will included, and for a PR
-you open for yourself as much as one you open for a hidden author. A different
-agent or Will merges. (Added 2026-10-15 after #56 and #59 were opened and
+the author's side twice. This holds for a PR you open for yourself as much as
+one you open for a hidden author. A different agent or Will merges. (Added
+2026-10-15 after #56 and #59 were opened and
 merged by the same agent on another agent's APPROVE, which rule 6 below didn't
 forbid.)
 Commits carry their author's own identity (`git var GIT_AUTHOR_IDENT` before the
