@@ -1,6 +1,6 @@
 # Record decisions as MADR records beside the map
 
-Superseded by ADR-NNNN clause superseded by ADR-0010.
+Clause `Superseded by ADR-NNNN` superseded by ADR-0010.
 
 ## Context and Problem Statement
 
