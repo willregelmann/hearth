@@ -5,9 +5,9 @@ set -u
 cd "$(dirname "$0")/.."
 bash home/venv-controls >/dev/null 2>&1 || { echo "FATAL: venv-controls is not green unarmed" >&2; exit 2; }
 red=0; bad=0; F=; B=
-restore() { if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F" >&2; rm -f "$B"; fi; return 0; }
+restore() { if [ -n "${B:-}" ] && [ -f "$B" ]; then cp -p "$B" "$F"; if cmp -s "$B" "$F"; then rm -f "$B"; else echo "RESTORE FAILED $F: backup kept at $B" >&2; return 1; fi; fi; return 0; }
 trap restore EXIT
-trap 'restore; echo "INTERRUPTED: restored $F" >&2; exit 130' TERM INT HUP
+trap 'trap - EXIT; if restore; then echo "INTERRUPTED: restored $F" >&2; else echo "INTERRUPTED: $F NOT restored" >&2; fi; exit 130' TERM INT HUP
 arm() {
   local name="$1" old="$3" new="$4"; F=$2; B=$(mktemp); cp -p "$F" "$B"
   python3 - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; restore; exit 3; }

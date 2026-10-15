@@ -14,15 +14,20 @@ red=0; bad=0
 # SIGKILL cannot be trapped; this covers TERM/INT/HUP and the ordinary exit paths.
 CUR_F=""; CUR_B=""
 restore() {
-  if [ -n "${CUR_B:-}" ] && [ -f "$CUR_B" ] && [ -n "${CUR_F:-}" ]; then
-    cp -p "$CUR_B" "$CUR_F"; cmp -s "$CUR_B" "$CUR_F" || echo "RESTORE FAILED $CUR_F" >&2
-    rm -f "$CUR_B"
+  if [ -n "${CUR_B:-}" ] && [ -f "$CUR_B" ]; then
+    cp -p "$CUR_B" "$CUR_F"
+    if cmp -s "$CUR_B" "$CUR_F"; then
+      rm -f "$CUR_B"
+    else
+      echo "RESTORE FAILED $CUR_F: backup kept at $CUR_B" >&2
+      return 1
+    fi
   fi
   CUR_F=""; CUR_B=""
   return 0
 }
 trap restore EXIT
-trap 'restore; echo "INTERRUPTED: restored the armed source; re-run before trusting any arm result." >&2; exit 130' TERM INT HUP
+trap 'trap - EXIT; if restore; then echo "INTERRUPTED: restored $CUR_F" >&2; else echo "INTERRUPTED: $CUR_F NOT restored" >&2; fi; exit 130' TERM INT HUP
 arm() {
   local name="$1" F="$2" old="$3" new="$4" B
   B=$(mktemp); cp -p "$F" "$B"
