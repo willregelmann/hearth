@@ -20,6 +20,7 @@ from typing import Optional
 
 PYPROJECT = Path(__file__).resolve().parent.parent / "pyproject.toml"
 _DEP = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)(\[[^\]]*\])?\s*@\s*git\+(?P<url>[^@\s]+)@(?P<commit>[0-9a-f]{40})$")
+REQUIRED = frozenset({"frontdesk", "tapestry"})
 
 
 def _parse(deps) -> dict[str, dict]:
@@ -33,6 +34,11 @@ def _parse(deps) -> dict[str, dict]:
         if not m:
             raise ValueError(f"not pinned to a 40-character commit: {dep!r}")
         out[m["name"]] = {"url": m["url"], "commit": m["commit"]}
+    missing = sorted(REQUIRED - set(out))
+    if missing:
+        # An empty or partial list would generate an empty marketplace and a tree check over
+        # nothing, which reads as clean. Absence is an error, never an empty answer.
+        raise ValueError(f"no pin for {', '.join(missing)}")
     return out
 
 

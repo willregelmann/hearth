@@ -29,5 +29,7 @@ arm "probe the test's own interpreter, not the plugin's" \
   "        got = installed(python, [plugin])" "        got = installed(hearth_python, [plugin])"
 arm "frontdesk ignores the plugin option" \
   ' or env.get("CLAUDE_PLUGIN_OPTION_PYTHON")' ""
+arm "an empty or partial pin list is accepted" \
+  "    if missing:" "    if False:"
 rm -f $B
 echo "arms red: $red, arms green: $bad"

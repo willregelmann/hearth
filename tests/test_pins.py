@@ -111,6 +111,20 @@ def test_red_a_moved_pin_is_named(tmp_path):
                      f"{pins.pins()['tapestry']['url']}@{'f' * 40}"]
 
 
+def test_red_an_empty_or_partial_pin_list_is_refused(tmp_path):
+    """{} would generate an empty marketplace and a tree check over nothing: both read clean."""
+    empty = tmp_path / "empty.toml"
+    empty.write_text('[project]\nname = "hearth"\ndependencies = []\n')
+    with pytest.raises(ValueError, match="no pin for frontdesk, tapestry"):
+        pins.pins(empty)
+    partial = tmp_path / "partial.toml"
+    text = pins.PYPROJECT.read_text()
+    line = next(l for l in text.splitlines() if l.strip().startswith('"tapestry @'))
+    partial.write_text(text.replace(line + "\n", ""))
+    with pytest.raises(ValueError, match="no pin for tapestry"):
+        pins.pins(partial)
+
+
 def test_red_an_unpinned_dependency_is_refused(tmp_path):
     loose = tmp_path / "pyproject.toml"
     loose.write_text(pins.PYPROJECT.read_text().replace(
