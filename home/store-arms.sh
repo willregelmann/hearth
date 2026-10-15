@@ -14,7 +14,10 @@ arm() {
   local name="$1" old="$2" new="$3"
   python3 - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F" >&2; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
-assert s.count(old) == 1, f"anchor not unique: {old!r}"; open(p, "w").write(s.replace(old, new))
+assert s.count(old) == 1, f"anchor not unique: {old!r}"
+want = s.replace(old, new)
+with open(p, "w") as fh: fh.write(want)
+assert open(p).read() == want, f"mutation did not land on disk: {p}"
 EOF
   out=$(bash home/store-controls 2>&1); rc=$?
   cp -p $B $F; cmp -s $B $F || { echo "RESTORE FAILED"; exit 2; }

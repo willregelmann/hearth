@@ -28,7 +28,10 @@ arm() {
   CUR_F="$F"; CUR_B="$B"
   $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F"; rm -f "$B"; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
-assert s.count(old) == 1, f"anchor not unique: {old!r}"; open(p, "w").write(s.replace(old, new))
+assert s.count(old) == 1, f"anchor not unique: {old!r}"
+want = s.replace(old, new)
+with open(p, "w") as fh: fh.write(want)
+assert open(p).read() == want, f"mutation did not land on disk: {p}"
 EOF
   out=$(timeout 300 $PY -m pytest -q -p no:cacheprovider tests/test_tenantcheck.py 2>&1 | tail -1)
   cp -p "$B" "$F"; cmp -s "$B" "$F" || { echo "RESTORE FAILED $F"; exit 2; }; rm -f "$B"
