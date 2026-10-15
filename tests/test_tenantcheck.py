@@ -293,6 +293,35 @@ def test_red_an_intermediate_hop_in_a_writable_directory(tmp_path):
 
 
 @needs_nonroot
+def test_red_a_link_chain_met_at_an_ancestor(tmp_path):
+    """Ash on #85, R1: a -> d/e, d/e -> f, then a/x. d is writable and nothing else on the chain is,
+    so d must be flagged. realpath(a) collapses straight to f and would hide d."""
+    d, f = tmp_path / "d", tmp_path / "f"
+    d.mkdir()
+    f.mkdir()
+    (f / "x").write_text("")
+    (d / "e").symlink_to(f)
+    (tmp_path / "a").symlink_to(d / "e")
+    for q in (f / "x", f):
+        q.chmod(0o555 if q.is_dir() else 0o444)
+    found = tenantcheck._writable_by_me(tmp_path / "a" / "x")
+    assert str(d) in found and str(f) not in found and str(f / "x") not in found, found
+
+
+@needs_nonroot
+def test_dotdot_after_a_link_applies_to_the_link_s_real_directory(tmp_path):
+    """via -> real/b, then via/../c/x. The kernel resolves via first, so '..' lands in real and the
+    file is real/c/x. Normalising the path as typed would give <tmp>/c/x, a different place."""
+    real = tmp_path / "real"
+    (real / "b").mkdir(parents=True)
+    (real / "c").mkdir()
+    (real / "c" / "x").write_text("")
+    (tmp_path / "via").symlink_to(real / "b")
+    found = tenantcheck._writable_by_me(Path(f"{tmp_path}/via/../c/x"))
+    assert str(real / "c" / "x") in found and str(tmp_path / "c") not in found, found
+
+
+@needs_nonroot
 def test_red_a_linked_ancestor_dir_in_a_writable_directory(tmp_path):
     """<tmp>/bin -> /usr/bin, then <tmp>/bin/python3.12: /usr/bin is root's, but the link named bin
     sits in a writable directory and can be pointed elsewhere."""

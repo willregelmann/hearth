@@ -108,36 +108,44 @@ class Tenant:
 
 
 def _writable_by_me(p: Path) -> list[str]:
-    """Every place this user could write to change what `p` runs: the real file, and the real
-    directory holding each link and each ancestor along the way. A symlink's own mode is 0777 on
-    Linux, so asking access() about the link itself says "writable" to everyone; a link can only be
-    replaced by writing the directory it sits in, so that directory is what's asked instead. Every
-    hop of a link chain is followed, since an intermediate hop in a writable directory can be
-    repointed even when the final target is root's."""
+    """Every place this user could write to change what `p` runs: the real file it resolves to, and
+    the real directory holding every component met while resolving it, links included, wherever in
+    the path they are. A symlink's own mode is 0777 on Linux, so asking access() about a link says
+    "writable" to everyone; a link can only be replaced by writing the directory it sits in, so that
+    directory is what's asked instead.
+
+    Resolution is component by component, as the kernel does it: a link met anywhere (leaf or
+    ancestor) has its target spliced in and resolved the same way, so every hop's directory is seen.
+    realpath() would collapse a chain met at an ancestor and hide its middle hops."""
     found: list[Path] = []
 
-    def add_chain(real: str):
-        q = Path(real)
-        while True:
-            if q not in found:
-                found.append(q)
-            if q == q.parent:
-                return
-            q = q.parent
+    def add(q: Path):
+        if q not in found:
+            found.append(q)
 
-    hop = Path(p)
-    for _ in range(40):
-        for a in (hop.parent, *hop.parent.parents):
-            add_chain(os.path.realpath(a))
-        if not hop.is_symlink():
-            break
-        t = os.readlink(hop)
-        hop = Path(t) if os.path.isabs(t) else hop.parent / t
-    else:
-        return [f"{p}: more than 40 links"]
-    final = Path(os.path.realpath(p))
-    if final not in found:
-        found.insert(0, final)
+    start = Path(p) if os.path.isabs(p) else Path.cwd() / p
+    parts = list(start.parts[1:])
+    cur, hops = Path("/"), 0
+    add(cur)
+    while parts:
+        name = parts.pop(0)
+        if name in ("", "."):
+            continue
+        if name == "..":
+            cur = cur.parent
+            continue
+        nxt = cur / name
+        if nxt.is_symlink():
+            hops += 1
+            if hops > 40:
+                return [f"{p}: more than 40 links"]
+            t = Path(os.readlink(nxt))
+            parts = list(t.parts[1:] if t.is_absolute() else t.parts) + parts
+            if t.is_absolute():
+                cur = Path("/")
+            continue
+        cur = nxt
+        add(cur)
     return [str(q) for q in found if os.access(q, os.W_OK)]
 
 
