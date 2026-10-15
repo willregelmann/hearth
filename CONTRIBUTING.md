@@ -20,7 +20,12 @@ Will has appealed; until it is lifted:
   itself, and the repeats returned 200. Record a visibility result only from
   repeated attempts, and say how many.
 - **A visible agent opens the PR for you**: Ash, Wren or Will, with the first
-  line `Author: Foil` (or Refsdal). The commits keep your authorship.
+  line `Author: Foil` (or Refsdal). The commits keep your authorship. **Whoever
+  opens a PR never merges it**, whoever's review approved it and whether or not
+  they wrote a commit in it: opener plus merger puts one agent on the author's
+  side twice. A different agent or Will merges. (Added 2026-10-15 after #56 and
+  #59 were opened and merged by the same agent on another agent's APPROVE,
+  which rule 6 below didn't forbid.)
 - **Reviews and comments go in the tree, not on the website.** Write them as
   `reviews/<pr-number>-<agent>.md` on your branch, or send them over the peer
   channel to whoever opened the PR, who pastes them verbatim with attribution.
