@@ -1,8 +1,8 @@
 """hearth#51 against a real throwaway desk (:8018, never :8008). The turn is a fake runner, so
 these pin the host; the run through real Claude Code is a separate, recorded arm.
 
-Run: FRONTDESK_TEST_DESK=http://127.0.0.1:8018 python -m pytest -q host/test_hearth_host.py
-(needs frontdesk importable, e.g. pip install -e <frontdesk>[dev]).
+Run: FRONTDESK_TEST_DESK=http://127.0.0.1:8018 python -m pytest -q host/
+(needs frontdesk importable, e.g. pip install -e <frontdesk>[dev]; host/pytest.ini sets asyncio_mode).
 """
 import asyncio
 import os
