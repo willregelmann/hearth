@@ -7,6 +7,12 @@ cd "$(dirname "$0")/.."
 export FRONTDESK_TEST_DESK=http://127.0.0.1:8018
 PY=${PY:-python3}
 F=hearth/host.py
+# The unarmed suite must be green before any arm runs, scored on pytest's own rc rather
+# than its prose (#98). Without this, a tree left mutated by a killed run -- SIGKILL
+# defeats the trap (#93) -- is adopted as the pristine backup at $B, so every arm still
+# reddens, the headline reads 6 red 0 green, and a real defect is preserved and reported
+# as full coverage.
+timeout 600 $PY -m pytest -q -p no:cacheprovider -c host/pytest.ini host/test_host.py >/dev/null 2>&1 || { echo "FATAL: the UNARMED suite is not green under PY=$PY" >&2; exit 2; }
 B=$(mktemp); cp -p $F $B
 trap 'cp -p $B $F; cmp -s $B $F || echo "RESTORE FAILED (trap)"; rm -f $B' EXIT INT TERM
 red=0; bad=0

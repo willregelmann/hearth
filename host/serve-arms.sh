@@ -9,8 +9,11 @@ PY=${PY:-python3}
 F=hearth/host.py
 B=$(mktemp); cp -p $F $B
 trap 'cp -p $B $F; cmp -s $B $F || echo "RESTORE FAILED (trap)"; rm -f $B' EXIT INT TERM
-base=$(timeout 600 $PY -m pytest -q -p no:cacheprovider -c host/pytest.ini host/test_serve.py 2>&1 | tail -1)
-case "$base" in *failed*|*error*|*" 0 passed"*) echo "not green unarmed: $base"; exit 2;; esac
+# Scored on pytest's own rc, not its prose: piping to tail discards the exit status, and
+# "1 error" from an unparseable tree is not distinguishable from a test failure (#98).
+BL=$(mktemp); timeout 600 $PY -m pytest -q -p no:cacheprovider -c host/pytest.ini host/test_serve.py >"$BL" 2>&1; brc=$?
+base=$(tail -1 "$BL"); rm -f "$BL"
+[ $brc = 0 ] || { echo "not green unarmed (pytest rc=$brc): $base"; exit 2; }
 echo "unarmed: $base"
 red=0; bad=0
 arm() {
