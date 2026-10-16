@@ -34,20 +34,30 @@ trap restore EXIT
 trap 'trap - EXIT; if restore; then echo "INTERRUPTED: restored $CUR_F" >&2; else echo "INTERRUPTED: $CUR_F NOT restored" >&2; fi; exit 130' TERM INT HUP
 arm() {
   local name="$1" F="$2" old="$3" new="$4" B
-  B=$(mktemp); cp -p "$F" "$B"
-  CUR_F="$F"; CUR_B="$B"
-  $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F"; rm -f "$B"; exit 3; }
+  local _g=0 _n=0 _t
+  # A green arm is re-run (#99): one green is weak evidence and must not look
+  # identical to a repeated one. Red on any trial means the guard is live.
+  for _t in 1 2 3; do
+    B=$(mktemp); cp -p "$F" "$B"
+    CUR_F="$F"; CUR_B="$B"
+    $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F"; rm -f "$B"; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
 assert s.count(old) == 1, f"anchor not unique: {old!r}"
 want = s.replace(old, new)
 with open(p, "w") as fh: fh.write(want)
 assert open(p).read() == want, f"mutation did not land on disk: {p}"
 EOF
-  L=$(mktemp); timeout 300 $PY -m pytest -q -p no:cacheprovider tests/test_tenantcheck.py >"$L" 2>&1; prc=$?
-  out=$(tail -1 "$L"); rm -f "$L"
-  cp -p "$B" "$F"; cmp -s "$B" "$F" || { echo "RESTORE FAILED $F"; exit 2; }; rm -f "$B"
-  if [ $prc = 1 ]; then echo "ARM $name: RED ($out)"; red=$((red+1));
-  elif [ $prc = 0 ]; then echo "ARM $name: GREEN ($out)"; bad=$((bad+1));
+    L=$(mktemp); timeout 300 $PY -m pytest -q -p no:cacheprovider tests/test_tenantcheck.py >"$L" 2>&1; prc=$?
+    out=$(tail -1 "$L"); rm -f "$L"
+    cp -p "$B" "$F"; cmp -s "$B" "$F" || { echo "RESTORE FAILED $F"; exit 2; }; rm -f "$B"
+    _n=$_t
+    [ $prc = 1 ] && break
+    [ $prc = 0 ] || break
+    _g=$((_g+1))
+  done
+  if [ $prc = 1 ] && [ $_g = 0 ]; then echo "ARM $name: RED ($out)"; red=$((red+1));
+  elif [ $prc = 1 ]; then echo "ARM $name: FLAKY, $_g green of $_n trials ($out)"; bad=$((bad+1));
+  elif [ $prc = 0 ]; then echo "ARM $name: GREEN ($_g/$_n) ($out)"; bad=$((bad+1));
   else echo "ARM $name: NOT A RESULT, pytest rc=$prc ($out)"; bad=$((bad+1)); fi
 }
 T=hearth/tenantcheck.py; M=hearth/marketplace.py
