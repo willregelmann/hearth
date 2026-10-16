@@ -16,7 +16,10 @@ assert s.count(old) == 1, f"anchor not unique: {old!r}"; open(p, "w").write(s.re
 EOF
   out=$(bash home/venv-controls 2>&1); rc=$?
   cp -p "$B" "$F"; cmp -s "$B" "$F" || { echo "RESTORE FAILED $F"; exit 2; }; rm -f "$B"; B=
-  if [ $rc != 0 ]; then echo "ARM $name: RED ($(echo "$out" | grep -c '^FAIL') FAIL)"; red=$((red+1)); else echo "ARM $name: GREEN"; bad=$((bad+1)); fi
+  n=$(echo "$out" | grep -c '^FAIL')
+  if [ "$n" -gt 0 ]; then echo "ARM $name: RED ($n FAIL)"; red=$((red+1))
+  elif [ $rc != 0 ]; then echo "ARM $name: NOT A RESULT, controls rc=$rc with no FAIL line -- broken, not caught"; bad=$((bad+1))
+  else echo "ARM $name: GREEN"; bad=$((bad+1)); fi
 }
 V=home/venv-state; P=home/provision
 arm "hearth files not compared" $V \
