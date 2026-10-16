@@ -45,11 +45,19 @@ async def home(tmp_path):
     await keeper.close()
 
 
-async def session_alarm(home, session, text, in_ms=1500):
-    """What a session's own server does for a self-alarm: list on its seat, send, exit."""
+async def session_alarm(home, session, text, in_ms=1500, due_at=None):
+    """What a session's own server does for a self-alarm: list on its seat, send, exit.
+
+    ``due_at``, if given, is appended with the ``time.monotonic()`` reading at which this
+    alarm comes due. The deadline starts when ``send`` is called, which is after an
+    arbitrarily slow ``list_channel``, so a caller that needs to know when the alarm fires
+    cannot derive it from a clock read of its own (hearth #94, #111).
+    """
     desk = Desk(home, seat=session)
     try:
         handle = await desk.list_channel(session, "set the alarm")
+        if due_at is not None:
+            due_at.append(time.monotonic() + in_ms / 1000.0)
         return await desk.send("ember", text, channel=handle, arrive="wake",
                                hold_until=int(time.time() * 1000) + in_ms)
     finally:
@@ -121,25 +129,34 @@ async def test_a_session_open_elsewhere_is_never_resumed_and_runs_once_it_closes
 
 
 async def test_a_session_that_opens_mid_wake_defers_and_runs_when_it_closes(home):
-    # t0 BEFORE the alarm is set, so the alarm's deadline and the window below share one
-    # origin. Taking it after made the window a budget for setup: the alarm comes due
-    # in_ms after session_alarm is CALLED, and session_alarm costs ~2.4s on a Pi, so the
-    # alarm was already overdue before t0 existed and the seat never read as open
-    # (hearth #94, the second mechanism -- 5 reds in 12 trials on aarch64).
-    t0 = time.monotonic()
-    receipt = await session_alarm(home, "sess-A", "ALARM-NOTE deferred", in_ms=1200)
+    # The alarm's deadline starts when session_alarm calls send, after a list_channel that
+    # costs 243-804ms on a Pi, so neither the window below nor the assertion can be derived
+    # from a clock read of our own: due_at carries the real due time back (hearth #94).
+    due_at = []
+    receipt = await session_alarm(home, "sess-A", "ALARM-NOTE deferred", in_ms=1200,
+                                  due_at=due_at)
+    [due] = due_at
     open_ = set()
     turns = Turns()
+    seen_open = []
 
     def attended(c):
-        # the seat is served from the start; the session opens just before the alarm is due
-        if time.monotonic() - t0 > 0.8 and time.monotonic() - t0 < 6:
+        # The seat is served from the start; the session opens just before the alarm is due
+        # and closes 3s later. Anchored on the alarm's own due time, not on setup cost.
+        now = time.monotonic()
+        if due - 0.4 < now < due + 3:
+            seen_open.append(now)
             return c in {"sess-A"}
         return False
 
     await serving(home, turns, lambda: turns.calls and state(home, receipt) == "taken_in",
                   attended=attended)
-    assert time.monotonic() - t0 >= 6   # not before the session closed
+    # The deferral has to be OBSERVED, not inferred from elapsed time: asserting only that
+    # time passed let a slow enough setup satisfy the assertion with the seat never open,
+    # so the test passed whether or not the turn had been deferred at all (hearth #111).
+    assert seen_open, "the seat never read as open, so nothing was deferred"
+    assert turns.calls, "the deferred turn never ran"
+    assert time.monotonic() >= due, "the turn ran before the alarm was even due"
 
 
 async def test_the_resumed_turn_s_own_server_does_not_wake_it_again(home):
