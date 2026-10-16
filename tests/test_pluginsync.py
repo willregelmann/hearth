@@ -154,6 +154,7 @@ def test_live_claude_finds_a_process_under_the_dirs_and_not_others(tmp_path):
             with open(f"/proc/{x.pid}/stat") as f:
                 assert f.read().rsplit(")", 1)[1].split()[0] != "Z", "setup: a stand-in isn't running"
         found = pluginsync.live_claude((str(v),))
+        assert p.poll() is None and q.poll() is None, "a stand-in died during the check (#108 N2)"
         assert p.pid in found and q.pid not in found
     finally:
         p.kill(); q.kill()

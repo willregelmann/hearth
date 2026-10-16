@@ -45,11 +45,19 @@ async def home(tmp_path):
     await keeper.close()
 
 
-async def session_alarm(home, session, text, in_ms=1500):
-    """What a session's own server does for a self-alarm: list on its seat, send, exit."""
+async def session_alarm(home, session, text, in_ms=1500, due_at=None):
+    """What a session's own server does for a self-alarm: list on its seat, send, exit.
+
+    ``due_at``, if given, is appended with the ``time.monotonic()`` reading at which this
+    alarm comes due. The deadline starts when ``send`` is called, which is after an
+    arbitrarily slow ``list_channel``, so a caller that needs to know when the alarm fires
+    cannot derive it from a clock read of its own (hearth #94, #111).
+    """
     desk = Desk(home, seat=session)
     try:
         handle = await desk.list_channel(session, "set the alarm")
+        if due_at is not None:
+            due_at.append(time.monotonic() + in_ms / 1000.0)
         return await desk.send("ember", text, channel=handle, arrive="wake",
                                hold_until=int(time.time() * 1000) + in_ms)
     finally:
@@ -121,20 +129,34 @@ async def test_a_session_open_elsewhere_is_never_resumed_and_runs_once_it_closes
 
 
 async def test_a_session_that_opens_mid_wake_defers_and_runs_when_it_closes(home):
-    receipt = await session_alarm(home, "sess-A", "ALARM-NOTE deferred", in_ms=1200)
+    # The alarm's deadline starts when session_alarm calls send, after a list_channel that
+    # costs 243-804ms on a Pi, so neither the window below nor the assertion can be derived
+    # from a clock read of our own: due_at carries the real due time back (hearth #94).
+    due_at = []
+    receipt = await session_alarm(home, "sess-A", "ALARM-NOTE deferred", in_ms=1200,
+                                  due_at=due_at)
+    [due] = due_at
     open_ = set()
     turns = Turns()
-    t0 = time.monotonic()
+    seen_open = []
 
     def attended(c):
-        # the seat is served from the start; the session opens just before the alarm is due
-        if time.monotonic() - t0 > 0.8 and time.monotonic() - t0 < 6:
+        # The seat is served from the start; the session opens just before the alarm is due
+        # and closes 3s later. Anchored on the alarm's own due time, not on setup cost.
+        now = time.monotonic()
+        if due - 0.4 < now < due + 3:
+            seen_open.append(now)
             return c in {"sess-A"}
         return False
 
     await serving(home, turns, lambda: turns.calls and state(home, receipt) == "taken_in",
                   attended=attended)
-    assert time.monotonic() - t0 >= 6   # not before the session closed
+    # The deferral has to be OBSERVED, not inferred from elapsed time: asserting only that
+    # time passed let a slow enough setup satisfy the assertion with the seat never open,
+    # so the test passed whether or not the turn had been deferred at all (hearth #111).
+    assert seen_open, "the seat never read as open, so nothing was deferred"
+    assert turns.calls, "the deferred turn never ran"
+    assert time.monotonic() >= due, "the turn ran before the alarm was even due"
 
 
 async def test_the_resumed_turn_s_own_server_does_not_wake_it_again(home):
@@ -292,39 +314,59 @@ def _record(home, pid, session, started=None):
 
 @pytest.fixture
 def versions(tmp_path):
-    """A tenant's versions dir with two "claude" versions, as after an update. The stand-in is a
-    copy of sleep, not of this interpreter: a copied uv-managed python finds no stdlib and dies at
-    once (Ash, #108 S1), and a dead child would let every "not attended" test pass on nothing."""
+    """A tenant's versions dir with two "claude" versions (copies of this interpreter), and the
+    ~/.local/bin/claude link at the newer one, as after an update."""
     import shutil
     v = tmp_path / "versions"
     v.mkdir()
     for ver in ("2.1.288", "2.1.300"):
-        shutil.copy2(SLEEP, v / ver)
+        shutil.copy2(os.path.realpath(sys.executable), v / ver)
     return v
 
 
-SLEEP = os.path.realpath("/usr/bin/sleep")
+def _interpreter_env():
+    """``PYTHONHOME`` for a copy of this interpreter living outside its own prefix.
 
+    ``versions`` copies the real interpreter into a temp dir. Where that interpreter is
+    self-contained under its own prefix -- a uv-managed CPython, ``sys.base_prefix`` inside
+    ``~/.local/share/uv`` -- the copy cannot find its stdlib and dies in ~2ms with "Could not
+    find platform independent libraries". ``_detached`` sends its stderr to DEVNULL, so the
+    only symptom is ``attended()`` correctly reporting False for a process that is already
+    gone, intermittently, depending on whether the /proc read wins the race (hearth #94).
 
-def _alive(pid):
-    """Running, not a zombie: what attended() is asked about must really be there."""
-    try:
-        with open(f"/proc/{pid}/stat") as f:
-            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
-    except OSError:
-        return False
+    Setting ``PYTHONHOME`` to ``sys.base_prefix`` repairs the stdlib lookup and keeps the
+    subject a real interpreter of the right vintage, which a shim script or ``sleep`` would
+    not: ``attended()`` is identifying a *claude* process, so substituting a different kind of
+    binary changes what these tests prove. Harmless where the copy already survives (a distro
+    interpreter with ``sys.base_prefix`` at ``/usr``), which is why it is set unconditionally
+    rather than probed for.
+    """
+    return {**os.environ, "PYTHONHOME": sys.base_prefix}
 
 
 def _detached(binary):
     """A live process running ``binary``, not a descendant of this one (double fork)."""
     out = subprocess.run([sys.executable, "-c",
-                          "import subprocess, sys; p = subprocess.Popen([sys.argv[1], '60'], "
-                          "start_new_session=True, stdout=subprocess.DEVNULL, "
+                          "import subprocess, sys; p = subprocess.Popen([sys.argv[1], '-c', "
+                          "'import time; time.sleep(60)'], start_new_session=True, stdout=subprocess.DEVNULL, "
                           "stderr=subprocess.DEVNULL); print(p.pid)", str(binary)],
-                         capture_output=True, text=True, check=True)
+                         capture_output=True, text=True, check=True, env=_interpreter_env())
     pid = int(out.stdout)
-    assert _alive(pid), f"setup: the stand-in {binary} isn't running"
-    return pid
+    # The spawned binary must still be alive for attended() to have anything to find; a copy
+    # that cannot start exits in ~2ms and makes every assertion below a race (hearth #94).
+    for _ in range(200):
+        if _exe_of(pid) is not None:
+            return pid
+        time.sleep(0.005)
+    raise AssertionError(f"spawned {binary} did not stay alive: /proc/{pid}/exe unreadable")
+
+
+def _exe_of(pid):
+    """``/proc/<pid>/exe``, or None if the process is gone (or never started)."""
+    try:
+        return os.readlink(f"/proc/{pid}/exe")
+    except OSError:
+        return None
 
 
 @pytest.fixture
@@ -362,7 +404,7 @@ def test_attended_by_a_session_whose_binary_was_deleted_under_it(tmp_path, versi
 
 
 def test_not_attended_when_the_process_isn_t_claude(tmp_path, versions, procs):
-    procs.append(_detached(SLEEP))   # a shell or tmux ancestor: also recorded by the hook
+    procs.append(_detached(sys.executable))   # a shell or tmux ancestor: also recorded by the hook
     _record(tmp_path, procs[-1], "sess-A")
     assert not hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
 
@@ -384,11 +426,19 @@ def test_not_attended_when_the_pid_was_reused(tmp_path, versions, procs):
 
 
 def test_not_attended_by_this_host_s_own_turn(tmp_path, versions):
-    child = subprocess.Popen([str(versions / "2.1.300"), "60"])
+    # _interpreter_env: under uv a bare copy dies in ~2ms, and "not attended" would then pass on
+    # a dead child. Alive is checked on both sides of the assertion (Ash, #108 N2).
+    child = subprocess.Popen([str(versions / "2.1.300"), "-c", "import time; time.sleep(60)"],
+                             env=_interpreter_env())
     try:
-        assert _alive(child.pid), "setup: the stand-in isn't running"
+        for _ in range(200):
+            if _exe_of(child.pid) is not None:
+                break
+            time.sleep(0.005)
         _record(tmp_path, child.pid, "sess-A")
+        assert _exe_of(child.pid) is not None, "setup: the stand-in isn't running"
         assert not hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
+        assert child.poll() is None, "the stand-in died during the check, so the answer proves nothing"
     finally:
         child.kill()
 
