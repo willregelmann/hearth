@@ -447,3 +447,80 @@ def test_red_frontdesk_home_is_the_home_itself_or_a_sibling_prefix(tenant, tmp_p
     for val in (tenant.home, sib):
         _settings(tenant, lambda s: s["pluginConfigs"]["frontdesk@hearth"]["options"].update(home=str(val)))
         assert tenantcheck.frontdesk_home(tenant)[0] == RED, val
+
+
+# host_running: hearth-host@<tenant> is active, from root's unit, as this tenant, from root's venv
+
+ROOT_FILE = "/etc/hostname"   # stands in for root's unit file: a regular file only root can write
+
+
+@pytest.fixture
+def unit(tmp_path):
+    """A fake /proc with one main process owned by the caller, running the host from root's venv."""
+    proc = tmp_path / "proc"
+    (proc / "4242").mkdir(parents=True)
+    (proc / "4242/cmdline").write_bytes(b"\0".join([tenantcheck.HEARTH_PY.encode(), b"-I", b"-m",
+                                                    b"hearth.host"]) + b"\0")
+    shown = {"ActiveState": "active", "MainPID": "4242", "FragmentPath": ROOT_FILE}
+    return proc, shown
+
+
+def _host(tenant, unit, **kw):
+    proc, shown = unit
+    return tenantcheck.host_running(tenant, show=lambda u: dict(shown), proc=str(proc),
+                                    unit_file=kw.get("unit_file", ROOT_FILE))
+
+
+def test_green_host_running_as_the_tenant(tenant, unit):
+    rc, msg = _host(tenant, unit)
+    assert rc == GREEN, msg
+
+
+@pytest.mark.parametrize("field,value", [("ActiveState", "failed"), ("ActiveState", "inactive"),
+                                         ("MainPID", "0"), ("FragmentPath", "/home/x/hearth-host@.service"),
+                                         ("FragmentPath", "")])
+def test_red_host_not_running_or_not_root_s_unit(tenant, unit, field, value):
+    unit[1][field] = value
+    assert _host(tenant, unit)[0] == RED
+
+
+def test_red_unit_file_the_tenant_can_write(tenant, unit, tmp_path):
+    f = tmp_path / "hearth-host@.service"
+    f.write_text("[Service]\n")
+    unit[1]["FragmentPath"] = str(f)
+    assert _host(tenant, unit, unit_file=str(f))[0] == RED
+
+
+def test_red_host_runs_as_someone_else(tenant, unit):
+    proc, shown = unit
+    # a real /proc entry owned by root, running exactly the host's argv: only the owner is wrong
+    assert os.getuid() != 0
+    real = Path("/proc/1")
+    assert real.stat().st_uid == 0
+    fake = proc / "1"
+    fake.symlink_to(real)   # os.stat follows it: uid 0
+    (proc / "argv").write_bytes((proc / "4242/cmdline").read_bytes())
+    shown["MainPID"] = "1"
+    orig = Path.read_bytes
+    try:
+        Path.read_bytes = lambda self: (proc / "argv").read_bytes() if str(self) == f"{proc}/1/cmdline" \
+            else orig(self)
+        rc, msg = tenantcheck.host_running(tenant, show=lambda u: dict(shown), proc=str(proc),
+                                           unit_file=ROOT_FILE)
+    finally:
+        Path.read_bytes = orig
+    assert rc == RED and "runs as uid 0" in msg, msg
+
+
+@pytest.mark.parametrize("argv", [[b"/home/t/venv/bin/python", b"-I", b"-m", b"hearth.host"],
+                                  [tenantcheck.HEARTH_PY.encode(), b"-m", b"hearth.host"],
+                                  [tenantcheck.HEARTH_PY.encode(), b"-I", b"-m", b"something.else"]])
+def test_red_host_runs_other_code(tenant, unit, argv):
+    (unit[0] / "4242/cmdline").write_bytes(b"\0".join(argv) + b"\0")
+    assert _host(tenant, unit)[0] == RED
+
+
+def test_red_when_systemctl_cant_be_asked(tenant):
+    def boom(u):
+        raise OSError("no systemctl")
+    assert tenantcheck.host_running(tenant, show=boom)[0] == RED

@@ -106,4 +106,14 @@ arm "marketplace overwrites a different file" $M \
   '        raise RuntimeError(f"{path} exists and differs' '        return "present"; raise RuntimeError(f"{path} exists and differs'
 arm "marketplace serves an extra pin" $M \
   '    if set(p) != set(PLUGINS):' '    if False:'
+arm "host_running: any process owner" $T \
+  '    if uid != os.getuid():' '    if False:'
+arm "host_running: any code in the main process" $T \
+  '    if argv[:4] != [HEARTH_PY.encode(), b"-I", b"-m", b"hearth.host"]:' '    if False:'
+arm "host_running: a unit file the tenant can write" $T \
+  '    if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_mode & 0o022:' '    if not stat.S_ISREG(st.st_mode):'
+arm "host_running: a unit from anywhere" $T \
+  '    if s.get("FragmentPath") != want:' '    if False:'
+arm "host_running: not running is fine" $T \
+  '    if s.get("ActiveState") != "active" or s.get("MainPID", "0") == "0":' '    if s.get("MainPID", "0") == "0":'
 echo "arms red: $red, arms green: $bad"; [ "$bad" = 0 ]

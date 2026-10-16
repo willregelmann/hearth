@@ -1,0 +1,23 @@
+# hearth-host@<tenant>.service: the tenant's long-lived Front Desk host (hearth#51).
+# Installed root-owned by home/provision. Runs as the tenant, from root's venv, so the tenant runs
+# this code but can't edit it. Enabled per tenant: systemctl enable --now hearth-host@<tenant>.
+[Unit]
+Description=Hearth host for %i (wakes its conversations)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=%i
+Group=%i
+# same fixed environment idea as home/turn: nothing from the caller, HOME from the passwd entry
+Environment=PATH=/usr/bin:/bin LANG=C.UTF-8
+ExecStart=/opt/hearth/venv/bin/python -I -m hearth.host
+WorkingDirectory=~
+Restart=on-failure
+RestartSec=10
+# 78: no usable Front Desk home (frontdesk_home not GREEN). A person owes a step; don't loop.
+RestartPreventExitStatus=78
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

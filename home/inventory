@@ -18,5 +18,6 @@ memory      | own    | tenant      | Tapestry plugin @ hearth.pins, provision | 
 channel     | own    | tenant      | Front Desk plugin @ hearth.pins, provision | plugin_match:frontdesk
 channel_home| own    | tenant      | frontdesk join (Will)    | frontdesk_home
 other_plugins| own   | tenant      | -                        | other_plugins
+host        | own    | tenant      | provision (root unit hearth-host@) | host_running
 sudo        | absent | -           | -                        | no_sudo
 judge       | own    | root        | provision (/opt/hearth)  | judge_not_tenant

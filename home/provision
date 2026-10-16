@@ -271,6 +271,24 @@ tmp = p + ".part"
 with open(tmp, "w") as f: json.dump(s, f, indent=2); f.write("\n")
 os.replace(tmp, p)' "$settings" "$VENV/bin/python" || die "couldn't set TAPESTRY_PYTHON in $settings"; fi
 
+# 5d. The host service (hearth#51): hearth-host@<tenant> runs `python -I -m hearth.host` as the
+#     tenant from root's venv, and wakes the tenant's conversations when their messages are due.
+#     The unit file is root's, like the judge. It is started only once Front Desk's home is set
+#     (Will's step 2 below); before that it would exit 78 at once. Re-runs leave a running one alone.
+UNIT_SRC=$here/hearth-host@.service; UNIT_DST=/etc/systemd/system/hearth-host@.service
+if [ -e "$UNIT_DST" ] && ! cmp -s "$UNIT_SRC" "$UNIT_DST"; then
+  die "$UNIT_DST exists and differs from $UNIT_SRC (another revision?); replace it by hand, then systemctl daemon-reload"
+fi
+if [ -e "$UNIT_DST" ]; then echo "= $UNIT_DST present"
+else run install -o root -g root -m 644 "$UNIT_SRC" "$UNIT_DST"; run systemctl daemon-reload; fi
+if [ $DRY = 1 ]; then
+  echo "+ systemctl enable --now hearth-host@$T.service   (only if frontdesk_home is GREEN as $T)"
+elif sudo -u "$T" -H "$HPY" -I -m hearth.tenantcheck frontdesk_home >/dev/null 2>&1; then
+  run systemctl enable --now "hearth-host@$T.service"
+else
+  echo "= hearth-host@$T not started: Front Desk's home isn't set yet (step 2 below starts it)"
+fi
+
 # 6. sudo, proved root-side (from inside, sudo can't tell no-rules from password-rules). Written
 #    last, so it is newer than any change this run made; check rejects it once any sudoers file is newer.
 run install -d -o root -g root -m 755 "$JUDGE/attest"
@@ -293,7 +311,8 @@ Provisioned $T, apart from the login and the desk. Next, as Will:
   2. Front Desk identity, which provision doesn't create (it's an identity on a desk):
      sudo -iu $T $VENV/bin/frontdesk join $T --answerable <you>
      sudo -iu $T sh -c 'echo "{\"home\":\"\$HOME/.frontdesk/$T\"}" | claude plugin configure frontdesk@hearth --values-stdin'
-     Until then check reports channel_home PENDING, and the run fails.
+     sudo systemctl enable --now hearth-host@$T     # the host that wakes its conversations
+     Until then check reports channel_home PENDING and host RED, and the run fails.
   3. sudo -iu $T $JUDGE/check
      It must be GREEN apart from cc_memory/sudo (ABSENT, declared), custody_in (KNOWN while any
      other account has root) and other_plugins (KNOWN if anything outside @hearth is enabled).

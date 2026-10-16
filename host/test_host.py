@@ -15,8 +15,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent))
-from hearth_host import HearthHost  # noqa: E402
+from hearth.host import HearthHost  # noqa: E402
 
 from frontdesk import Desk  # noqa: E402
 
