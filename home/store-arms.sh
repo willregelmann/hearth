@@ -21,7 +21,10 @@ assert open(p).read() == want, f"mutation did not land on disk: {p}"
 EOF
   out=$(bash home/store-controls 2>&1); rc=$?
   cp -p $B $F; cmp -s $B $F || { echo "RESTORE FAILED"; exit 2; }
-  if [ $rc != 0 ]; then echo "ARM $name: RED ($(echo "$out" | grep -c '^FAIL') FAIL)"; red=$((red+1)); else echo "ARM $name: GREEN"; bad=$((bad+1)); fi
+  n=$(echo "$out" | grep -c '^FAIL')
+  if [ "$n" -gt 0 ]; then echo "ARM $name: RED ($n FAIL)"; red=$((red+1))
+  elif [ $rc != 0 ]; then echo "ARM $name: NOT A RESULT, controls rc=$rc with no FAIL line -- broken, not caught"; bad=$((bad+1))
+  else echo "ARM $name: GREEN"; bad=$((bad+1)); fi
 }
 arm "stored file's hash not checked" \
   '  sha_ok "$CLAUDE_SRC" || die' '  true || die'
