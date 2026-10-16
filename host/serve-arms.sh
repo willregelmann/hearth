@@ -70,5 +70,5 @@ arm "our own turn counts as attended" "own_turn" \
   '        if pid == me or me in sessions.ancestors(pid):' '        if pid == me:'
 arm "root's store not a claude dir" "default_dirs" \
   ', "/opt/hearth/claude")' ')'
-echo "arms red: $red, arms green: $bad"
+echo "arms red: $red, arms bad: $bad"
 [ $bad = 0 ]

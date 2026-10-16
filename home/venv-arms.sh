@@ -41,4 +41,4 @@ arm "provision skips the re-check after --upgrade" $P \
   '             || die "$VENV still differs after --upgrade:' '             || echo "$VENV still differs after --upgrade:'
 arm "provision upgrades when it couldn't compare" $P \
   '    *) die "couldn'"'"'t compare $VENV' '    *) run "$HPY" -m pip install --quiet "$repo"; die "couldn'"'"'t compare $VENV'
-echo "arms red: $red, arms green: $bad"; [ "$bad" = 0 ]
+echo "arms red: $red, arms bad: $bad"; [ "$bad" = 0 ]

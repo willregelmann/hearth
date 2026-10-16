@@ -129,4 +129,4 @@ arm "host_running: a unit from anywhere" $T \
   '    if s.get("FragmentPath") != want:' '    if False:'
 arm "host_running: not running is fine" $T \
   '    if s.get("ActiveState") != "active" or s.get("MainPID", "0") == "0":' '    if s.get("MainPID", "0") == "0":'
-echo "arms red: $red, arms green: $bad"; [ "$bad" = 0 ]
+echo "arms red: $red, arms bad: $bad"; [ "$bad" = 0 ]

@@ -82,4 +82,4 @@ arm "a digest of a non-file is a digest" \
   '        if not stat.S_ISREG(os.fstat(f.fileno()).st_mode):
             return None' '        pass'
 rm -f $B
-echo "arms red: $red, arms green: $bad"; [ "$bad" = 0 ]
+echo "arms red: $red, arms bad: $bad"; [ "$bad" = 0 ]

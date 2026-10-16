@@ -37,4 +37,4 @@ arm "dry run downloads" \
   'elif [ $DRY = 1 ]; then
   echo "+ download' 'elif false; then
   echo "+ download'
-echo "arms red: $red, arms green: $bad"; [ "$bad" = 0 ]
+echo "arms red: $red, arms bad: $bad"; [ "$bad" = 0 ]
