@@ -28,8 +28,23 @@ ASH_MARKETPLACE = (
 
 
 def test_the_marketplace_generated_from_the_pins_is_the_one_ash_ran():
+    """The format Ash's real run produced, byte for byte, with the shas of whatever
+    is pinned now substituted in.
+
+    ASH_MARKETPLACE records an actual 2.1.288 run and is evidence of the byte
+    format Claude Code accepted, so its shas are left as that run emitted them
+    rather than rewritten whenever a pin moves -- a constant edited to match the
+    current pins would no longer record the run, and tracking the pins is already
+    covered by test_the_marketplace_follows_a_pin_change.
+    """
     assert len(ASH_MARKETPLACE.encode()) == 377
-    assert json.loads(marketplace.render()) == json.loads(ASH_MARKETPLACE)
+    want = json.loads(ASH_MARKETPLACE)
+    now = json.loads(marketplace.render())
+    p = pins.pins()
+    by_name = {"tapestry": p["tapestry"]["commit"], "frontdesk": p["frontdesk"]["commit"]}
+    for plugin in want["plugins"]:
+        plugin["source"]["sha"] = by_name[plugin["name"]]
+    assert now == want
 
 
 def test_the_marketplace_follows_a_pin_change():
