@@ -7,6 +7,7 @@ Run: FRONTDESK_TEST_DESK=http://127.0.0.1:8018 python -m pytest -q host/
 import asyncio
 import json
 import os
+import pwd
 import subprocess
 import sys
 import time
@@ -278,7 +279,8 @@ async def test_host_what_the_turn_s_own_server_claims_runs_in_a_next_turn(home):
         await desk.close()
 
 
-# attended(): the record has to name a live claude process that isn't ours
+# attended(): the record has to name a live claude process that isn't ours. A copy of this
+# interpreter stands in for claude, in a scratch versions/ dir laid out like the tenant's.
 
 
 def _record(home, pid, session, started=None):
@@ -289,39 +291,92 @@ def _record(home, pid, session, started=None):
 
 
 @pytest.fixture
-def other_process():
-    """A live process that isn't a descendant of this one: started via a double fork."""
+def versions(tmp_path):
+    """A tenant's versions dir with two "claude" versions (copies of this interpreter), and the
+    ~/.local/bin/claude link at the newer one, as after an update."""
+    import shutil
+    v = tmp_path / "versions"
+    v.mkdir()
+    for ver in ("2.1.288", "2.1.300"):
+        shutil.copy2(os.path.realpath(sys.executable), v / ver)
+    return v
+
+
+def _detached(binary):
+    """A live process running ``binary``, not a descendant of this one (double fork)."""
     out = subprocess.run([sys.executable, "-c",
-                          "import subprocess, sys; p = subprocess.Popen([sys.executable, '-c', "
+                          "import subprocess, sys; p = subprocess.Popen([sys.argv[1], '-c', "
                           "'import time; time.sleep(60)'], start_new_session=True, stdout=subprocess.DEVNULL, "
-                          "stderr=subprocess.DEVNULL); print(p.pid)"],
+                          "stderr=subprocess.DEVNULL); print(p.pid)", str(binary)],
                          capture_output=True, text=True, check=True)
-    pid = int(out.stdout)
-    yield pid
-    os.kill(pid, 9)
+    return int(out.stdout)
 
 
-def test_attended_by_a_live_process_running_claude(tmp_path, other_process):
-    _record(tmp_path, other_process, "sess-A")
-    exe = os.path.realpath(sys.executable)   # stands in for the claude binary
-    assert hh.attended(tmp_path, "sess-A", exe=exe)
-    assert not hh.attended(tmp_path, "sess-B", exe=exe)
+@pytest.fixture
+def procs():
+    pids = []
+    yield pids
+    for pid in pids:
+        try:
+            os.kill(pid, 9)
+        except ProcessLookupError:
+            pass
 
 
-def test_not_attended_when_the_process_isn_t_claude(tmp_path, other_process):
-    _record(tmp_path, other_process, "sess-A")   # a shell or tmux ancestor: also recorded by the hook
-    assert not hh.attended(tmp_path, "sess-A", exe="/nonexistent/claude")
+def test_attended_by_a_live_claude_of_the_current_version(tmp_path, versions, procs):
+    procs.append(_detached(versions / "2.1.300"))
+    _record(tmp_path, procs[-1], "sess-A")
+    assert hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
+    assert not hh.attended(tmp_path, "sess-B", dirs=(str(versions),))
 
 
-def test_not_attended_when_the_pid_was_reused(tmp_path, other_process):
-    _record(tmp_path, other_process, "sess-A", started="1")
-    assert not hh.attended(tmp_path, "sess-A", exe=os.path.realpath(sys.executable))
+def test_attended_by_a_session_still_on_the_version_before_an_update(tmp_path, versions, procs):
+    """Ash #91 R1 B: started on 2.1.288, ~/.local/bin/claude now points at 2.1.300."""
+    procs.append(_detached(versions / "2.1.288"))
+    _record(tmp_path, procs[-1], "sess-A")
+    assert hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
 
 
-def test_not_attended_by_this_host_s_own_turn(tmp_path):
-    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+def test_attended_by_a_session_whose_binary_was_deleted_under_it(tmp_path, versions, procs):
+    """Ash #91 R1 C: /proc/<pid>/exe reads "<path> (deleted)"."""
+    procs.append(_detached(versions / "2.1.288"))
+    _record(tmp_path, procs[-1], "sess-A")
+    (versions / "2.1.288").unlink()
+    assert os.readlink(f"/proc/{procs[-1]}/exe").endswith(" (deleted)")
+    assert hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
+
+
+def test_not_attended_when_the_process_isn_t_claude(tmp_path, versions, procs):
+    procs.append(_detached(sys.executable))   # a shell or tmux ancestor: also recorded by the hook
+    _record(tmp_path, procs[-1], "sess-A")
+    assert not hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
+
+
+def test_not_attended_by_a_binary_in_a_sibling_dir_with_the_same_prefix(tmp_path, versions, procs):
+    import shutil
+    sib = tmp_path / "versions-evil"
+    sib.mkdir()
+    shutil.copy2(versions / "2.1.300", sib / "x")
+    procs.append(_detached(sib / "x"))
+    _record(tmp_path, procs[-1], "sess-A")
+    assert not hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
+
+
+def test_not_attended_when_the_pid_was_reused(tmp_path, versions, procs):
+    procs.append(_detached(versions / "2.1.300"))
+    _record(tmp_path, procs[-1], "sess-A", started="1")
+    assert not hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
+
+
+def test_not_attended_by_this_host_s_own_turn(tmp_path, versions):
+    child = subprocess.Popen([str(versions / "2.1.300"), "-c", "import time; time.sleep(60)"])
     try:
         _record(tmp_path, child.pid, "sess-A")
-        assert not hh.attended(tmp_path, "sess-A", exe=os.path.realpath(sys.executable))
+        assert not hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
     finally:
         child.kill()
+
+
+def test_the_default_dirs_are_the_tenant_s_versions_and_root_s_store():
+    home = pwd.getpwuid(os.getuid()).pw_dir
+    assert hh.claude_dirs() == (os.path.realpath(f"{home}/.local/share/claude/versions"), "/opt/hearth/claude")

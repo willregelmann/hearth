@@ -40,5 +40,19 @@ arm "one turn per wake (nothing taken mid-turn runs)" "host_what_the_turn" \
 arm "deferred is never retried" "host_a_wake_for_an_open_session" \
   "                self.deferred.discard(conversation)
                 await self.wake(conversation)" "                pass"
+arm "the exact current binary only (B: a session on the old version)" "before_an_update" \
+  '        if exe is None or not any(exe.startswith(d.rstrip("/") + "/") for d in dirs):' \
+  '        if exe is None or os.path.basename(exe) != "2.1.300":'
+arm "an exact path compared (C: a binary deleted under it)" "deleted_under_it" \
+  '        if exe is None or not any(exe.startswith(d.rstrip("/") + "/") for d in dirs):' \
+  '        if exe is None or not os.path.exists(exe):'
+arm "a prefix match without the separator" "sibling_dir_with_the_same_prefix" \
+  'exe.startswith(d.rstrip("/") + "/")' 'exe.startswith(d.rstrip("/"))'
+arm "any process counts as claude" "isn_t_claude" \
+  '        if exe is None or not any(exe.startswith(d.rstrip("/") + "/") for d in dirs):' '        if exe is None:'
+arm "our own turn counts as attended" "own_turn" \
+  '        if pid == me or me in sessions.ancestors(pid):' '        if pid == me:'
+arm "root's store not a claude dir" "default_dirs" \
+  ', "/opt/hearth/claude")' ')'
 echo "arms red: $red, arms green: $bad"
 [ $bad = 0 ]

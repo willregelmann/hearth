@@ -6,7 +6,11 @@ cd "$(dirname "$0")/.."
 F=home/provision
 B=$(mktemp); cp -p $F $B; o=$(mktemp)
 trap 'cp -p $B $F; cmp -s $B $F || echo "RESTORE FAILED (trap)"; rm -f $B $o' EXIT INT TERM
-bash home/controls > $o 2>&1 || { echo "not green unarmed: $(grep '^FAIL' $o)"; exit 2; }
+# Judged by FAIL lines only: controls exits 1 on a SKIP too, and some runners always SKIP one (a
+# runner in the docker group skips control 12), which says nothing about step 5d (Ash, #91 N1).
+bash home/controls > $o 2>&1
+grep -q '^FAIL' $o && { echo "not green unarmed: $(grep '^FAIL' $o | tr '\n' ' ')"; exit 2; }
+grep -q '^ok   5d: ' $o || { echo "not green unarmed: no 5d control ran"; exit 2; }
 red=0; bad=0
 arm() {
   python3 - "$F" "$2" "$3" <<'EOF' || { echo "ANCHOR NOT FOUND: $1"; exit 3; }

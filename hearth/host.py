@@ -63,19 +63,36 @@ def turn_runner(conversation: str, prompt: str, *, turn: str = TURN, timeout: in
                           stdin=subprocess.DEVNULL, timeout=timeout + 60).returncode
 
 
-def claude_exe() -> str:
-    """What a tenant's live session runs: its pinned claude binary, links resolved."""
-    return os.path.realpath(Path(pwd.getpwuid(os.getuid()).pw_dir) / ".local" / "bin" / "claude")
+def claude_dirs() -> tuple[str, ...]:
+    """Where a tenant's claude binaries live: any version the tenant has installed, and root's
+    store. A live session keeps running the version it started on, after an update repoints
+    ~/.local/bin/claude (Ash, #91 R1 B), so the version isn't pinned here."""
+    home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    return (os.path.realpath(home / ".local" / "share" / "claude" / "versions"), "/opt/hearth/claude")
 
 
-def attended(home: Path, conversation: str, *, exe: Optional[str] = None) -> bool:
+def _exe(pid: int) -> Optional[str]:
+    """The binary a process runs, as the kernel names it. A binary deleted or replaced while it
+    runs reads as "<path> (deleted)" (Ash, #91 R1 C); the directory test below still holds for it,
+    since the suffix comes after the file name."""
+    try:
+        return os.readlink(f"/proc/{pid}/exe")
+    except OSError:
+        return None
+
+
+def attended(home: Path, conversation: str, *, dirs: Optional[tuple[str, ...]] = None) -> bool:
     """A live claude process that isn't this host's own descendant has ``conversation`` open.
 
     Front Desk's SessionStart hook records the session id against every ancestor of the hook
     (sessions.record), so the records also name shells, tmux and, for its own turns, this host.
-    A record counts only if its process is still the one recorded (same start time), runs the
-    claude binary, and doesn't descend from this process."""
-    exe = exe or claude_exe()
+    A record counts only if its process is still the one recorded (same start time), runs a
+    claude binary (one under ``dirs``), and doesn't descend from this process.
+
+    Errs toward True: a false True only defers a turn, a false False is two writers on one
+    transcript. Only Claude Code sessions are ever attended; a seat that isn't a session id has
+    no records, so it is never skipped."""
+    dirs = dirs or claude_dirs()
     try:
         entries = list((Path(home) / "claude-sessions").iterdir())
     except OSError:
@@ -88,10 +105,8 @@ def attended(home: Path, conversation: str, *, exe: Optional[str] = None) -> boo
             continue
         if entry.get("session") != conversation or entry.get("started") != sessions._started(pid):
             continue
-        try:
-            if os.path.realpath(f"/proc/{pid}/exe") != exe:
-                continue
-        except OSError:
+        exe = _exe(pid)
+        if exe is None or not any(exe.startswith(d.rstrip("/") + "/") for d in dirs):
             continue
         if pid == me or me in sessions.ancestors(pid):
             continue
