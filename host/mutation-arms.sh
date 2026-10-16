@@ -17,9 +17,12 @@ import sys; p, old, new = sys.argv[1:]; s = open(p).read()
 if s.count(old) != 1: sys.exit(1)
 open(p, "w").write(s.replace(old, new))
 EOF
-  out=$(timeout 200 $PY -m pytest -q -p no:cacheprovider -c host/pytest.ini host/test_host.py 2>&1 | tail -1)
+  L=$(mktemp); timeout 200 $PY -m pytest -q -p no:cacheprovider -c host/pytest.ini host/test_host.py >"$L" 2>&1; prc=$?
+  out=$(tail -1 "$L"); rm -f "$L"
   cp -p $B $F; cmp -s $B $F || { echo "RESTORE FAILED"; exit 2; }
-  if echo "$out" | grep -q failed; then echo "ARM $name: RED ($out)"; red=$((red+1)); else echo "ARM $name: GREEN ($out)"; bad=$((bad+1)); fi
+  if [ $prc = 1 ]; then echo "ARM $name: RED ($out)"; red=$((red+1));
+  elif [ $prc = 0 ]; then echo "ARM $name: GREEN ($out)"; bad=$((bad+1));
+  else echo "ARM $name: NOT A RESULT, pytest rc=$prc ($out)"; bad=$((bad+1)); fi
 }
 arm "today's host: only the open session (no turn for a closed one)" \
   "        task = asyncio.get_running_loop().create_task(self._turn(conversation))" \
