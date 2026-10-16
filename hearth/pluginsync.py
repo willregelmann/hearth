@@ -106,6 +106,7 @@ def sync(t: Tenant, name: str, claude: str, live: Callable[[], list[int]]) -> tu
         return 1, (f"{pid} differs from the pin ({diffs[0]}), and claude is running as this tenant "
                    f"(pid {' '.join(map(str, running))}). Close those sessions and stop "
                    f"hearth-host@{t.home.name} for the run, then re-run provision.")
+    saved = None
     try:
         saved = options(t, name)
         run_claude(claude, "uninstall", pid)
@@ -114,7 +115,8 @@ def sync(t: Tenant, name: str, claude: str, live: Callable[[], list[int]]) -> tu
             run_claude(claude, "configure", pid, "--values-stdin", stdin=json.dumps(saved))
         back = options(t, name)
     except (RuntimeError, Unreadable, OSError, subprocess.SubprocessError) as e:
-        return 1, f"{pid}: reinstall failed: {e}"
+        lost = f", and its hand-set options {sorted(saved)} are gone" if saved else ""
+        return 1, f"{pid}: reinstall failed: {e}{lost}"
     if back != saved:
         return 1, f"{pid}: reinstalled, but its options came back as {sorted(back)}, were {sorted(saved)}"
     after = installed_diffs(t, name)
