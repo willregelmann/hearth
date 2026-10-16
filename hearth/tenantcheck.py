@@ -157,7 +157,7 @@ def plugin_match(t: Tenant, name: str):
     interpreter with the pinned package. Everything wrong is listed, not just the first thing."""
     pid = f"{name}@{marketplace.NAME}"
     want = pins.pins()[name]
-    found = []
+    found, notes = [], []
     try:
         s = t.settings()
         known = t.record("known_marketplaces.json")
@@ -193,9 +193,12 @@ def plugin_match(t: Tenant, name: str):
             found.append(f"{pid}: installPath {e.get('installPath')} isn't {expect}")
         else:
             installed = expect
+        # Reported, never decisive: the tenant can write it, and Claude Code doesn't move it when a
+        # pin bump leaves the plugin's tree unchanged (its version keys the install, not the
+        # commit; Ash ran this on 2.1.288). Only uninstall+install would, and that wipes the
+        # plugin's options (Front Desk's home). So a stale record over the right tree is GREEN.
         if e.get("gitCommitSha") != want["commit"]:
-            found.append(f"{pid}: records commit {e.get('gitCommitSha')}, pinned {want['commit']} "
-                         f"(a first look only; the tree below decides)")
+            notes.append(f"{pid} records commit {e.get('gitCommitSha')}, not the pin; the tree decides")
     # 4. The tree, against root's export at the current pin. No component of the path may be a
     #    link: the tree judged must be the tree Claude Code opens.
     ref = t.ref / name / want["commit"]
@@ -231,8 +234,9 @@ def plugin_match(t: Tenant, name: str):
         return RED, f"couldn't probe the interpreter: {e}"
     found += problems
     if found:
-        return RED, "; ".join(found)
-    return GREEN, f"{pid} is {want['commit'][:12]}: tree equals root's export, interpreter {t.hearth_py}"
+        return RED, "; ".join(found + notes)
+    return GREEN, "; ".join([f"{pid} is {want['commit'][:12]}: tree equals root's export, "
+                             f"interpreter {t.hearth_py}"] + notes)
 
 
 def frontdesk_home(t: Tenant):

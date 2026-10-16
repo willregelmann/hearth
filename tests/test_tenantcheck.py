@@ -154,6 +154,25 @@ def test_red_gitcommitsha_edited_to_match_never_rescues_a_changed_tree(tenant):
     assert rc == RED and "contents differ" in msg and "records commit" not in msg
 
 
+def test_green_a_stale_record_over_a_tree_that_equals_the_pin(tenant):
+    """Buster, 2026-10-16: the frontdesk pin moved f8f3575 -> cd35c3e, its plugin tree didn't, and
+    Claude Code kept gitCommitSha at the old commit. The tree is the pin's, so it's GREEN, and the
+    record is reported."""
+    _records(tenant, "installed_plugins.json",
+             lambda d: d["plugins"]["frontdesk@hearth"][0].update(gitCommitSha="f" * 40))
+    rc, msg = tenantcheck.plugin_match(tenant, "frontdesk")
+    assert rc == GREEN, msg
+    assert "records commit " + "f" * 40 in msg and "the tree decides" in msg
+
+
+def test_red_a_stale_record_and_a_stale_tree_says_both(tenant):
+    _records(tenant, "installed_plugins.json",
+             lambda d: d["plugins"]["tapestry@hearth"][0].update(gitCommitSha="f" * 40))
+    (tenant.plugins / "cache/hearth/tapestry/0.1.0/hooks/hooks.json").write_text('{"hooks": []}\n')
+    rc, msg = tenantcheck.plugin_match(tenant, "tapestry")
+    assert rc == RED and "contents differ" in msg and "records commit" in msg
+
+
 def test_red_a_pin_bump_that_reuses_the_version_directory(tenant):
     """installPath is keyed by version, so a pin bump with plugin.json still at 0.1.0 reuses the
     directory (Ash (a)). The export at the NEW pin is what the old tree is held to."""
