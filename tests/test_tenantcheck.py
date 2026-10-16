@@ -34,8 +34,21 @@ def test_the_marketplace_generated_from_the_pins_is_the_one_ash_ran():
     ASH_MARKETPLACE records an actual 2.1.288 run and is evidence of the byte
     format Claude Code accepted, so its shas are left as that run emitted them
     rather than rewritten whenever a pin moves -- a constant edited to match the
-    current pins would no longer record the run, and tracking the pins is already
-    covered by test_the_marketplace_follows_a_pin_change.
+    current pins would no longer record the run.
+
+    What this guards, measured by mutation rather than assumed: a wrong sha out
+    of marketplace.render fails here, as does changing the constant's structure
+    (github -> gitlab) or its byte length. What it does NOT guard is pins.pins()
+    itself -- substituting the current pins puts the same read on both sides of
+    the comparison, so a wrong read cancels and this test still passes.
+
+    test_the_marketplace_follows_a_pin_change does not cover that either: it
+    injects its own sha and checks propagation, never exercising the read. The
+    pin read is covered elsewhere -- poisoning pins() reddens ten tests, the
+    three that compare a tenant's installed tree against pins.pins()' commit
+    (test_green_as_ash_s_run_left_it[tapestry], [frontdesk] and
+    test_green_settings_local_that_changes_nothing_relevant) plus seven in
+    test_pins.py, including test_red_a_moved_pin_is_named.
     """
     assert len(ASH_MARKETPLACE.encode()) == 377
     want = json.loads(ASH_MARKETPLACE)
