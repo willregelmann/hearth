@@ -47,13 +47,18 @@ B=$(mktemp); cp -p $F $B
 # covers TERM/INT/HUP and the ordinary exit paths; nothing can cover -9.
 restore() {
   if [ -n "${B:-}" ] && [ -f "$B" ]; then
-    cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED $F" >&2
-    rm -f "$B"
+    cp -p "$B" "$F"
+    if cmp -s "$B" "$F"; then
+      rm -f "$B"
+    else
+      echo "RESTORE FAILED $F: backup kept at $B" >&2
+      return 1
+    fi
   fi
   return 0
 }
 trap restore EXIT
-trap 'restore; echo "INTERRUPTED: restored $F; re-run before trusting any arm result." >&2; exit 130' TERM INT HUP
+trap 'trap - EXIT; if restore; then echo "INTERRUPTED: restored $F" >&2; else echo "INTERRUPTED: $F NOT restored" >&2; fi; exit 130' TERM INT HUP
 red=0; bad=0
 arm() {
   local name="$1" old="$2" new="$3"
