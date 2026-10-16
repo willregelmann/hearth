@@ -28,8 +28,12 @@ ASH_MARKETPLACE = (
 
 
 def test_the_marketplace_generated_from_the_pins_is_the_one_ash_ran():
+    """Ash's run with the frontdesk sha moved to the current pin: one substitution, nothing else."""
     assert len(ASH_MARKETPLACE.encode()) == 377
-    assert json.loads(marketplace.render()) == json.loads(ASH_MARKETPLACE)
+    old = "f8f3575ce39fb4e677b00a9d397328799dd49090"
+    assert ASH_MARKETPLACE.count(old) == 1
+    want = ASH_MARKETPLACE.replace(old, pins.pins()["frontdesk"]["commit"])
+    assert json.loads(marketplace.render()) == json.loads(want)
 
 
 def test_the_marketplace_follows_a_pin_change():
