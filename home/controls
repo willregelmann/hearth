@@ -311,4 +311,45 @@ expect "plugins: memory judging frontdesk instead is RED as required" \
 rm -f "$t/fakepy"; cp "$here/inventory" "$t/inventory"; rc=$(run "$t/plc")
 expect "plugins: no root venv is RED, not skipped" $(grep -q '^RED    memory .*no .*fakepy (provision step 5b)' "$t/out"; echo $?) "$(grep ' memory ' "$t/out")"
 
+fake 0; cp "$here/inventory" "$t/inventory"; rc=$(run "$t/plc")
+expect "host: the row asks tenantcheck host_running" \
+  $(grep -q '^GREEN  host .*stand-in -I -m hearth.tenantcheck host_running' "$t/out"; echo $?) "$(grep ' host ' "$t/out")"
+grep -v '^host ' "$here/inventory" > "$t/inventory"; rc=$(run "$t/plc")
+expect "host: dropping the line is RED as required" $(grep -q 'required as host:host_running' "$t/out"; echo $?) "$(grep ' host ' "$t/out")"
+cp "$here/inventory" "$t/inventory"
+
+# 20. the unit provision installs runs the host as the tenant, from root's venv, isolated
+u="$here/hearth-host@.service"
+expect "unit: User=%i and Group=%i" $(grep -qx 'User=%i' "$u" && grep -qx 'Group=%i' "$u"; echo $?) "$(grep -E '^(User|Group)=' "$u")"
+want="ExecStart=$(grep -oE '^HEARTH_PY=[^ ]+' "$here/check" | cut -d= -f2) -I -m hearth.host"
+expect "unit: ExecStart is check's HEARTH_PY -I -m hearth.host" $(grep -qxF "$want" "$u"; echo $?) "$(grep ^ExecStart= "$u"), want $want"
+expect "unit: no environment from a file the tenant could write" $(! grep -qE '^(EnvironmentFile|ExecStartPre)=' "$u"; echo $?) "$(grep -E '^(EnvironmentFile|ExecStartPre)=' "$u")"
+
+# 21. provision's step 5d run for real (DRY=0) on scratch paths, with systemctl and the tenant's
+# python stood in: installs the unit once, stops on a different one, and starts the service only
+# when frontdesk_home is GREEN as the tenant.
+step5d=$(sed -n '/^# 5d\. /,/^# 6\. /p' "$here/provision" | sed "s#UNIT_DST=/etc/systemd/system/#UNIT_DST=$t/units/#")
+echo "$step5d" | grep -q "UNIT_DST=$t/units/" || { echo "FAIL could not retarget UNIT_DST"; fail=1; }
+d5() {   # $1 = frontdesk_home rc the stand-in python gives
+  printf '#!/bin/sh\nexit %s\n' "$1" > "$t/hpy5"; chmod +x "$t/hpy5"; : > "$t/sysctl.log"
+  ( DRY=0; T=tenant5; here=$here; HPY=$t/hpy5
+    run() { "$@"; }; die() { echo "STOP: $*"; exit 1; }
+    install() { mkdir -p "$t/units"; cp "${@: -2:1}" "${@: -1}"; }    # owner/mode need root
+    systemctl() { echo "$*" >> "$t/sysctl.log"; }
+    sudo() { shift 3; "$@"; }                                         # sudo -u T -H cmd...
+    eval "$step5d" ) > "$t/out" 2>&1; echo $?
+}
+rm -rf "$t/units"; rc=$(d5 1)
+expect "5d: unit installed, not started while frontdesk_home isn't GREEN" \
+  $([ "$rc" = 0 ] && cmp -s "$here/hearth-host@.service" "$t/units/hearth-host@.service" \
+    && grep -qx daemon-reload "$t/sysctl.log" && ! grep -q enable "$t/sysctl.log"; echo $?) "rc=$rc $(cat "$t/sysctl.log" "$t/out" | tr '\n' ' ')"
+rc=$(d5 0)
+expect "5d: present unit kept, service started when frontdesk_home is GREEN" \
+  $([ "$rc" = 0 ] && grep -qx 'enable --now hearth-host@tenant5.service' "$t/sysctl.log" && ! grep -qx daemon-reload "$t/sysctl.log"; echo $?) \
+  "rc=$rc $(cat "$t/sysctl.log" "$t/out" | tr '\n' ' ')"
+echo '# edited' >> "$t/units/hearth-host@.service"; rc=$(d5 0)
+expect "5d: a different unit is a STOP, nothing started" \
+  $([ "$rc" != 0 ] && grep -q '^STOP: .*hearth-host@.service exists and differs' "$t/out" && [ ! -s "$t/sysctl.log" ]; echo $?) \
+  "rc=$rc $(cat "$t/sysctl.log" "$t/out" | tr '\n' ' ')"
+
 exit $fail

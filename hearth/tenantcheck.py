@@ -3,6 +3,7 @@
     python -I -m hearth.tenantcheck plugin_match <name>   the plugin Claude Code will load is the pin
     python -I -m hearth.tenantcheck frontdesk_home        Front Desk's identity directory is set
     python -I -m hearth.tenantcheck other_plugins         plugins enabled from anywhere else
+    python -I -m hearth.tenantcheck host_running          hearth-host@<tenant> runs as the tenant
 
 Exit codes follow check's: 0 GREEN, 1 RED, 4 KNOWN (reported, never green, doesn't fail the run),
 5 PENDING (a setup step a person still owes; fails the run). The message is one line.
@@ -25,6 +26,7 @@ import json
 import os
 import pwd
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -262,6 +264,57 @@ def frontdesk_home(t: Tenant):
     return GREEN, f"frontdesk home {p}"
 
 
+UNIT_DIR = "/etc/systemd/system"
+UNIT = "hearth-host@.service"
+
+
+def _systemctl_show(unit: str) -> dict:
+    out = subprocess.run(["/usr/bin/systemctl", "show", unit, "-p", "ActiveState,MainPID,FragmentPath,User"],
+                         capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+    if out.returncode != 0:
+        raise Unreadable(f"systemctl show {unit}: rc {out.returncode} {out.stderr.strip()[:200]}")
+    return dict(line.split("=", 1) for line in out.stdout.splitlines() if "=" in line)
+
+
+def host_running(t: Tenant, show=_systemctl_show, proc: str = "/proc", unit_file: str = UNIT_DIR + "/" + UNIT):
+    """hearth-host@<tenant> is active, from root's unit file, and its main process runs as this
+    tenant from root's venv: what wakes the tenant's conversations (hearth#51)."""
+    me = pwd.getpwuid(os.getuid()).pw_name
+    unit = f"hearth-host@{me}.service"
+    try:
+        s = show(unit)
+    except (Unreadable, OSError, subprocess.SubprocessError) as e:
+        return RED, f"couldn't look: {e}"
+    want = unit_file
+    if s.get("FragmentPath") != want:
+        return RED, f"{unit} comes from {s.get('FragmentPath') or 'nowhere'}, not {want}"
+    try:
+        st = os.lstat(want)
+    except OSError as e:
+        return RED, f"{want}: {e.strerror}"
+    if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_mode & 0o022:
+        return RED, f"{want} isn't a root-owned file only root can write"
+    if s.get("ActiveState") != "active" or s.get("MainPID", "0") == "0":
+        return RED, f"{unit} is {s.get('ActiveState')}, not running"
+    pid = s["MainPID"]
+    try:
+        uid = os.stat(f"{proc}/{pid}").st_uid
+        argv = Path(f"{proc}/{pid}/cmdline").read_bytes().split(b"\0")
+    except OSError as e:
+        return RED, f"main pid {pid}: {e.strerror}"
+    if uid != os.getuid():
+        return RED, f"{unit}'s main process {pid} runs as uid {uid}, not {me}"
+    if argv[:4] != [HEARTH_PY.encode(), b"-I", b"-m", b"hearth.host"]:
+        return RED, f"{unit}'s main process runs {b' '.join(argv).decode(errors='replace')[:200]}"
+    return GREEN, f"{unit} active, pid {pid} as {me}"
+
+
+def frontdesk_home_path(t: Tenant) -> Path:
+    """The configured Front Desk home, for a caller that has had frontdesk_home GREEN."""
+    s = t.settings()
+    return Path(s["pluginConfigs"][f"frontdesk@{marketplace.NAME}"]["options"]["home"])
+
+
 def other_plugins(t: Tenant):
     """Plugins enabled in ~/.claude settings (local overriding) from anywhere but Hearth's marketplace also load into the
     tenant's session. v0 reports them and doesn't fail (Ash, 2026-10-15). KNOWN when there are any,
@@ -277,7 +330,8 @@ def other_plugins(t: Tenant):
     return GREEN, f"no plugin enabled outside @{marketplace.NAME} in ~/.claude settings"
 
 
-CHECKS = {"plugin_match": plugin_match, "frontdesk_home": frontdesk_home, "other_plugins": other_plugins}
+CHECKS = {"plugin_match": plugin_match, "frontdesk_home": frontdesk_home, "other_plugins": other_plugins,
+          "host_running": host_running}
 
 
 def main(argv=None) -> int:

@@ -67,6 +67,18 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   block reaches Tapestry's server, and that nothing outside ~/.claude settings (managed settings,
   `--plugin-dir`, `CLAUDE_CODE_PLUGIN_CACHE_DIR`) loads another copy; check can't see those.
   `other_plugins` reports anything enabled outside @hearth as KNOWN, not a failure, in v0.
+- The host (hearth#51). `hearth-host@<tenant>.service`, root's unit in /etc/systemd/system, runs
+  `/opt/hearth/venv/bin/python -I -m hearth.host` as the tenant. It reads Front Desk's home from
+  the tenant's plugin config (exit 78, no restart loop, while that's unset), keeps one desk per live
+  channel's seat (a Claude Code session's seat is its session id), and when a waking message is due
+  resumes that session through `turn --trigger frontdesk --resume <id>`, so the ledger row names it.
+  A session that a live claude process has open is left to its own server, never resumed beside it.
+  Provision installs the unit and starts it only once `frontdesk_home` is GREEN as the tenant.
+  `check`'s `host` row (`host_running`) needs it active, from root's unit, with its main process
+  running as the tenant from root's venv. `host/test_serve.py` runs it against the :8018 test desk
+  with a fake turn; `host/serve-arms.sh` and `home/host-arms.sh` show each guard matters. Needs
+  Front Desk with "a seat never claims another seat's message": on the f8f3575 pin, two seats lose
+  a message about 1 time in 15 (measured: 2 of 30, twice), and the two-session test failed 2 of 4 runs.
 - Believed, not checked: `DISABLE_AUTOUPDATER` in `~/.claude/settings.json` env stops Claude
   Code's background updater. `check`'s pinned version line is what proves it, on every run.
 

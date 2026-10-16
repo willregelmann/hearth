@@ -28,7 +28,7 @@ INV=${1:-$DEFAULT_INV}
 LEDGER="$HOME/.hearth/ledger.jsonl"
 # Items the run must contain, with the check each must use, whatever the list says: an inventory that
 # drops one, or swaps its check for a weaker one (e.g. declared_absent), can't pass.
-REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant cc_memory:no_memory memory:plugin_match:tapestry channel:plugin_match:frontdesk channel_home:frontdesk_home other_plugins:other_plugins loan_reach:loan_reach"
+REQUIRED="user:user_exists home_dir:home_private claude_bin:claude_runs oauth:model_turn custody:others_unreadable custody_in:inbound_custody sudo:no_sudo judge:judge_not_tenant cc_memory:no_memory memory:plugin_match:tapestry channel:plugin_match:frontdesk channel_home:frontdesk_home other_plugins:other_plugins loan_reach:loan_reach host:host_running"
 # Membership in any of these is root without a sudoers rule. provision denies the same list.
 ROOT_GROUPS="sudo admin wheel docker lxd libvirt"
 ATTEST_DIR=/opt/hearth/home/attest; ATTEST_OWNER=root
@@ -287,6 +287,8 @@ tc() {
 c_plugin_match() { tc plugin_match "$1"; }
 c_frontdesk_home() { tc frontdesk_home; }
 c_other_plugins() { tc other_plugins; }
+# hearth#51: the tenant's host service, which wakes its conversations
+c_host_running() { tc host_running; }
 
 seen=" "
 while IFS='|' read -r item kind owner issuer chk; do

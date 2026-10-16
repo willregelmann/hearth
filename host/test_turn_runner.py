@@ -6,8 +6,7 @@ import stat
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from hearth_host import turn_runner  # noqa: E402
+from hearth.host import turn_runner  # noqa: E402
 
 
 def test_turn_runner_resumes_the_conversation_with_the_prompt(tmp_path):
