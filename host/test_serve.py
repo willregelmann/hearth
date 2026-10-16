@@ -426,10 +426,19 @@ def test_not_attended_when_the_pid_was_reused(tmp_path, versions, procs):
 
 
 def test_not_attended_by_this_host_s_own_turn(tmp_path, versions):
-    child = subprocess.Popen([str(versions / "2.1.300"), "-c", "import time; time.sleep(60)"])
+    # _interpreter_env: under uv a bare copy dies in ~2ms, and "not attended" would then pass on
+    # a dead child. Alive is checked on both sides of the assertion (Ash, #108 N2).
+    child = subprocess.Popen([str(versions / "2.1.300"), "-c", "import time; time.sleep(60)"],
+                             env=_interpreter_env())
     try:
+        for _ in range(200):
+            if _exe_of(child.pid) is not None:
+                break
+            time.sleep(0.005)
         _record(tmp_path, child.pid, "sess-A")
+        assert _exe_of(child.pid) is not None, "setup: the stand-in isn't running"
         assert not hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
+        assert child.poll() is None, "the stand-in died during the check, so the answer proves nothing"
     finally:
         child.kill()
 

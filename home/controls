@@ -352,4 +352,14 @@ expect "5d: a different unit is a STOP, nothing started" \
   $([ "$rc" != 0 ] && grep -q '^STOP: .*hearth-host@.service exists and differs' "$t/out" && [ ! -s "$t/sysctl.log" ]; echo $?) \
   "rc=$rc $(cat "$t/sysctl.log" "$t/out" | tr '\n' ' ')"
 
+# 22. provision 5c brings each plugin to the pin through hearth.pluginsync, as the tenant, and stops
+# if it fails; before Front Desk's python is configured. (pluginsync's own behaviour: tests/.)
+c5=$(sed -n '/^# 5c\. /,/^# 5d\. /p' "$here/provision")
+expect "5c: pluginsync runs for both plugins, as the tenant, and a failure stops provision" \
+  $(echo "$c5" | grep -q '^for p in tapestry frontdesk; do$' \
+    && echo "$c5" | grep -qF 'else sudo -u "$T" -H "$HPY" -I -m hearth.pluginsync "$CL" "$p" || die '; echo $?) \
+  "$(echo "$c5" | grep -n pluginsync)"
+ps=$(echo "$c5" | grep -n 'hearth.pluginsync "$CL"' | cut -d: -f1); cf=$(echo "$c5" | grep -n 'plugin configure frontdesk@hearth --values-stdin \\' | cut -d: -f1)
+expect "5c: pluginsync comes before the python configure" $([ -n "$ps" ] && [ -n "$cf" ] && [ "$ps" -lt "$cf" ]; echo $?) "pluginsync l.$ps, configure l.$cf"
+
 exit $fail
