@@ -32,5 +32,5 @@ arm "never started" \
   '  run systemctl enable --now "hearth-host@$T.service"' '  :'
 arm "no daemon-reload after installing" \
   'run systemctl daemon-reload; fi' 'fi'
-echo "arms red: $red, arms green: $bad"
+echo "arms red: $red, arms bad: $bad"
 [ $bad = 0 ]

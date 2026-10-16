@@ -59,5 +59,5 @@ arm "wake runs the turn inline (blocks the desk)" \
 arm "never commits (arrivals left pending)" \
   "                await self.desk.commit(conversation, also=refs)" \
   "                return"
-echo "arms red: $red, arms green: $bad"
+echo "arms red: $red, arms bad: $bad"
 [ $bad = 0 ]
