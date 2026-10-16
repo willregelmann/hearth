@@ -121,10 +121,15 @@ async def test_a_session_open_elsewhere_is_never_resumed_and_runs_once_it_closes
 
 
 async def test_a_session_that_opens_mid_wake_defers_and_runs_when_it_closes(home):
+    # t0 BEFORE the alarm is set, so the alarm's deadline and the window below share one
+    # origin. Taking it after made the window a budget for setup: the alarm comes due
+    # in_ms after session_alarm is CALLED, and session_alarm costs ~2.4s on a Pi, so the
+    # alarm was already overdue before t0 existed and the seat never read as open
+    # (hearth #94, the second mechanism -- 5 reds in 12 trials on aarch64).
+    t0 = time.monotonic()
     receipt = await session_alarm(home, "sess-A", "ALARM-NOTE deferred", in_ms=1200)
     open_ = set()
     turns = Turns()
-    t0 = time.monotonic()
 
     def attended(c):
         # the seat is served from the start; the session opens just before the alarm is due
