@@ -63,6 +63,8 @@ EOF
 T=hearth/tenantcheck.py; M=hearth/marketplace.py
 arm "trust gitCommitSha, skip the tree" $T \
   '                diffs = plugintree.compare(ref, installed)' '                diffs = []'
+arm "the record decides again (a stale gitCommitSha is RED)" $T \
+  '            notes.append(f"{pid} records commit' '            found.append(f"{pid} records commit'
 arm "compare against the export named by the installed version, not the pin" $T \
   '    ref = t.ref / name / want["commit"]' '    ref = t.ref / name / sorted(os.listdir(t.ref / name))[0]'
 arm "settings marketplace path not checked" $T \
