@@ -493,8 +493,23 @@ def test_red_unit_file_the_tenant_can_write(tenant, unit, tmp_path):
 
 def test_red_host_runs_as_someone_else(tenant, unit):
     proc, shown = unit
-    shown["MainPID"] = "1"   # the real /proc/1 is root's
-    assert tenantcheck.host_running(tenant, show=lambda u: dict(shown), unit_file=ROOT_FILE)[0] == RED
+    # a real /proc entry owned by root, running exactly the host's argv: only the owner is wrong
+    assert os.getuid() != 0
+    real = Path("/proc/1")
+    assert real.stat().st_uid == 0
+    fake = proc / "1"
+    fake.symlink_to(real)   # os.stat follows it: uid 0
+    (proc / "argv").write_bytes((proc / "4242/cmdline").read_bytes())
+    shown["MainPID"] = "1"
+    orig = Path.read_bytes
+    try:
+        Path.read_bytes = lambda self: (proc / "argv").read_bytes() if str(self) == f"{proc}/1/cmdline" \
+            else orig(self)
+        rc, msg = tenantcheck.host_running(tenant, show=lambda u: dict(shown), proc=str(proc),
+                                           unit_file=ROOT_FILE)
+    finally:
+        Path.read_bytes = orig
+    assert rc == RED and "runs as uid 0" in msg, msg
 
 
 @pytest.mark.parametrize("argv", [[b"/home/t/venv/bin/python", b"-I", b"-m", b"hearth.host"],
