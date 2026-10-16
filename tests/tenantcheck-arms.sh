@@ -15,6 +15,10 @@ red=0; bad=0
 CUR_F=""; CUR_B=""
 restore() {
   if [ -n "${CUR_B:-}" ] && [ -f "$CUR_B" ]; then
+    if [ -z "${CUR_F:-}" ]; then
+      echo "RESTORE FAILED: subject unknown, backup kept at $CUR_B" >&2
+      return 1
+    fi
     cp -p "$CUR_B" "$CUR_F"
     if cmp -s "$CUR_B" "$CUR_F"; then
       rm -f "$CUR_B"
