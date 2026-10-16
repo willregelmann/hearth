@@ -292,24 +292,39 @@ def _record(home, pid, session, started=None):
 
 @pytest.fixture
 def versions(tmp_path):
-    """A tenant's versions dir with two "claude" versions (copies of this interpreter), and the
-    ~/.local/bin/claude link at the newer one, as after an update."""
+    """A tenant's versions dir with two "claude" versions, as after an update. The stand-in is a
+    copy of sleep, not of this interpreter: a copied uv-managed python finds no stdlib and dies at
+    once (Ash, #108 S1), and a dead child would let every "not attended" test pass on nothing."""
     import shutil
     v = tmp_path / "versions"
     v.mkdir()
     for ver in ("2.1.288", "2.1.300"):
-        shutil.copy2(os.path.realpath(sys.executable), v / ver)
+        shutil.copy2(SLEEP, v / ver)
     return v
+
+
+SLEEP = os.path.realpath("/usr/bin/sleep")
+
+
+def _alive(pid):
+    """Running, not a zombie: what attended() is asked about must really be there."""
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except OSError:
+        return False
 
 
 def _detached(binary):
     """A live process running ``binary``, not a descendant of this one (double fork)."""
     out = subprocess.run([sys.executable, "-c",
-                          "import subprocess, sys; p = subprocess.Popen([sys.argv[1], '-c', "
-                          "'import time; time.sleep(60)'], start_new_session=True, stdout=subprocess.DEVNULL, "
+                          "import subprocess, sys; p = subprocess.Popen([sys.argv[1], '60'], "
+                          "start_new_session=True, stdout=subprocess.DEVNULL, "
                           "stderr=subprocess.DEVNULL); print(p.pid)", str(binary)],
                          capture_output=True, text=True, check=True)
-    return int(out.stdout)
+    pid = int(out.stdout)
+    assert _alive(pid), f"setup: the stand-in {binary} isn't running"
+    return pid
 
 
 @pytest.fixture
@@ -347,7 +362,7 @@ def test_attended_by_a_session_whose_binary_was_deleted_under_it(tmp_path, versi
 
 
 def test_not_attended_when_the_process_isn_t_claude(tmp_path, versions, procs):
-    procs.append(_detached(sys.executable))   # a shell or tmux ancestor: also recorded by the hook
+    procs.append(_detached(SLEEP))   # a shell or tmux ancestor: also recorded by the hook
     _record(tmp_path, procs[-1], "sess-A")
     assert not hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
 
@@ -369,8 +384,9 @@ def test_not_attended_when_the_pid_was_reused(tmp_path, versions, procs):
 
 
 def test_not_attended_by_this_host_s_own_turn(tmp_path, versions):
-    child = subprocess.Popen([str(versions / "2.1.300"), "-c", "import time; time.sleep(60)"])
+    child = subprocess.Popen([str(versions / "2.1.300"), "60"])
     try:
+        assert _alive(child.pid), "setup: the stand-in isn't running"
         _record(tmp_path, child.pid, "sess-A")
         assert not hh.attended(tmp_path, "sess-A", dirs=(str(versions),))
     finally:

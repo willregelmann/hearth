@@ -145,10 +145,14 @@ def test_live_claude_finds_a_process_under_the_dirs_and_not_others(tmp_path):
     import subprocess
     v = tmp_path / "versions"
     v.mkdir()
-    shutil.copy2(os.path.realpath(sys.executable), v / "2.1.288")
-    p = subprocess.Popen([str(v / "2.1.288"), "-c", "import time; time.sleep(30)"])
-    q = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    # a copy of sleep, not of this interpreter: a copied uv-managed python dies at once (#108 S1)
+    shutil.copy2(os.path.realpath("/usr/bin/sleep"), v / "2.1.288")
+    p = subprocess.Popen([str(v / "2.1.288"), "30"])
+    q = subprocess.Popen(["/usr/bin/sleep", "30"])
     try:
+        for x in (p, q):
+            with open(f"/proc/{x.pid}/stat") as f:
+                assert f.read().rsplit(")", 1)[1].split()[0] != "Z", "setup: a stand-in isn't running"
         found = pluginsync.live_claude((str(v),))
         assert p.pid in found and q.pid not in found
     finally:
