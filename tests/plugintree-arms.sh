@@ -30,18 +30,28 @@ trap 'trap - EXIT; if restore; then echo "INTERRUPTED: restored $F" >&2; else ec
 red=0; bad=0
 arm() {
   local name="$1" old="$2" new="$3"
-  $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED"; exit 3; }
+  local _g=0 _n=0 _t
+  # A green arm is re-run (#99): one green is weak evidence and must not look
+  # identical to a repeated one. Red on any trial means the guard is live.
+  for _t in 1 2 3; do
+    $PY - "$F" "$old" "$new" <<'EOF' || { echo "ARM $name: ANCHOR NOT FOUND, nothing mutated"; cp -p "$B" "$F"; cmp -s "$B" "$F" || echo "RESTORE FAILED"; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
 assert s.count(old) == 1, f"anchor not unique: {old!r}"
 want = s.replace(old, new)
 with open(p, "w") as fh: fh.write(want)
 assert open(p).read() == want, f"mutation did not land on disk: {p}"
 EOF
-  L=$(mktemp); timeout 120 $PY -m pytest -q -p no:cacheprovider tests/test_plugintree.py >"$L" 2>&1; prc=$?
-  out=$(tail -1 "$L"); rm -f "$L"
-  cp -p $B $F; cmp -s $B $F || { echo "RESTORE FAILED"; exit 2; }
-  if [ $prc = 1 ]; then echo "ARM $name: RED ($out)"; red=$((red+1));
-  elif [ $prc = 0 ]; then echo "ARM $name: GREEN ($out)"; bad=$((bad+1));
+    L=$(mktemp); timeout 120 $PY -m pytest -q -p no:cacheprovider tests/test_plugintree.py >"$L" 2>&1; prc=$?
+    out=$(tail -1 "$L"); rm -f "$L"
+    cp -p $B $F; cmp -s $B $F || { echo "RESTORE FAILED"; exit 2; }
+    _n=$_t
+    [ $prc = 1 ] && break
+    [ $prc = 0 ] || break
+    _g=$((_g+1))
+  done
+  if [ $prc = 1 ] && [ $_g = 0 ]; then echo "ARM $name: RED ($out)"; red=$((red+1));
+  elif [ $prc = 1 ]; then echo "ARM $name: FLAKY, $_g green of $_n trials ($out)"; bad=$((bad+1));
+  elif [ $prc = 0 ]; then echo "ARM $name: GREEN ($_g/$_n) ($out)"; bad=$((bad+1));
   else echo "ARM $name: NOT A RESULT, pytest rc=$prc ($out)"; bad=$((bad+1)); fi
 }
 arm "excuse every dotfile" \

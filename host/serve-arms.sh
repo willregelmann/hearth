@@ -18,16 +18,26 @@ echo "unarmed: $base"
 red=0; bad=0
 arm() {
   local name="$1" k="$2" old="$3" new="$4"
-  $PY - "$F" "$old" "$new" <<'EOF' || { echo "ANCHOR NOT FOUND: $name"; cp -p $B $F; exit 3; }
+  local _g=0 _n=0 _t
+  # A green arm is re-run (#99): one green is weak evidence and must not look
+  # identical to a repeated one. Red on any trial means the guard is live.
+  for _t in 1 2 3; do
+    $PY - "$F" "$old" "$new" <<'EOF' || { echo "ANCHOR NOT FOUND: $name"; cp -p $B $F; exit 3; }
 import sys; p, old, new = sys.argv[1:]; s = open(p).read()
 if s.count(old) != 1: sys.exit(1)
 open(p, "w").write(s.replace(old, new))
 EOF
-  L=$(mktemp); timeout 300 $PY -m pytest -q -p no:cacheprovider -c host/pytest.ini host/test_serve.py -k "$k" >"$L" 2>&1; prc=$?
-  out=$(tail -1 "$L"); rm -f "$L"
-  cp -p $B $F; cmp -s $B $F || { echo "RESTORE FAILED"; exit 2; }
-  if [ $prc = 1 ]; then echo "ARM $name: RED ($out)"; red=$((red+1));
-  elif [ $prc = 0 ]; then echo "ARM $name: GREEN ($out)"; bad=$((bad+1));
+    L=$(mktemp); timeout 300 $PY -m pytest -q -p no:cacheprovider -c host/pytest.ini host/test_serve.py -k "$k" >"$L" 2>&1; prc=$?
+    out=$(tail -1 "$L"); rm -f "$L"
+    cp -p $B $F; cmp -s $B $F || { echo "RESTORE FAILED"; exit 2; }
+    _n=$_t
+    [ $prc = 1 ] && break
+    [ $prc = 0 ] || break
+    _g=$((_g+1))
+  done
+  if [ $prc = 1 ] && [ $_g = 0 ]; then echo "ARM $name: RED ($out)"; red=$((red+1));
+  elif [ $prc = 1 ]; then echo "ARM $name: FLAKY, $_g green of $_n trials ($out)"; bad=$((bad+1));
+  elif [ $prc = 0 ]; then echo "ARM $name: GREEN ($_g/$_n) ($out)"; bad=$((bad+1));
   else echo "ARM $name: NOT A RESULT, pytest rc=$prc ($out)"; bad=$((bad+1)); fi
 }
 arm "#55's shape: one desk on the host's own seat, no seat per conversation" "session_s_alarm" \
