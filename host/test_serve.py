@@ -302,14 +302,49 @@ def versions(tmp_path):
     return v
 
 
+def _interpreter_env():
+    """``PYTHONHOME`` for a copy of this interpreter living outside its own prefix.
+
+    ``versions`` copies the real interpreter into a temp dir. Where that interpreter is
+    self-contained under its own prefix -- a uv-managed CPython, ``sys.base_prefix`` inside
+    ``~/.local/share/uv`` -- the copy cannot find its stdlib and dies in ~2ms with "Could not
+    find platform independent libraries". ``_detached`` sends its stderr to DEVNULL, so the
+    only symptom is ``attended()`` correctly reporting False for a process that is already
+    gone, intermittently, depending on whether the /proc read wins the race (hearth #94).
+
+    Setting ``PYTHONHOME`` to ``sys.base_prefix`` repairs the stdlib lookup and keeps the
+    subject a real interpreter of the right vintage, which a shim script or ``sleep`` would
+    not: ``attended()`` is identifying a *claude* process, so substituting a different kind of
+    binary changes what these tests prove. Harmless where the copy already survives (a distro
+    interpreter with ``sys.base_prefix`` at ``/usr``), which is why it is set unconditionally
+    rather than probed for.
+    """
+    return {**os.environ, "PYTHONHOME": sys.base_prefix}
+
+
 def _detached(binary):
     """A live process running ``binary``, not a descendant of this one (double fork)."""
     out = subprocess.run([sys.executable, "-c",
                           "import subprocess, sys; p = subprocess.Popen([sys.argv[1], '-c', "
                           "'import time; time.sleep(60)'], start_new_session=True, stdout=subprocess.DEVNULL, "
                           "stderr=subprocess.DEVNULL); print(p.pid)", str(binary)],
-                         capture_output=True, text=True, check=True)
-    return int(out.stdout)
+                         capture_output=True, text=True, check=True, env=_interpreter_env())
+    pid = int(out.stdout)
+    # The spawned binary must still be alive for attended() to have anything to find; a copy
+    # that cannot start exits in ~2ms and makes every assertion below a race (hearth #94).
+    for _ in range(200):
+        if _exe_of(pid) is not None:
+            return pid
+        time.sleep(0.005)
+    raise AssertionError(f"spawned {binary} did not stay alive: /proc/{pid}/exe unreadable")
+
+
+def _exe_of(pid):
+    """``/proc/<pid>/exe``, or None if the process is gone (or never started)."""
+    try:
+        return os.readlink(f"/proc/{pid}/exe")
+    except OSError:
+        return None
 
 
 @pytest.fixture
