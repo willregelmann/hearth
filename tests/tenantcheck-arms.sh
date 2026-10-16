@@ -43,9 +43,12 @@ want = s.replace(old, new)
 with open(p, "w") as fh: fh.write(want)
 assert open(p).read() == want, f"mutation did not land on disk: {p}"
 EOF
-  out=$(timeout 300 $PY -m pytest -q -p no:cacheprovider tests/test_tenantcheck.py 2>&1 | tail -1)
+  L=$(mktemp); timeout 300 $PY -m pytest -q -p no:cacheprovider tests/test_tenantcheck.py >"$L" 2>&1; prc=$?
+  out=$(tail -1 "$L"); rm -f "$L"
   cp -p "$B" "$F"; cmp -s "$B" "$F" || { echo "RESTORE FAILED $F"; exit 2; }; rm -f "$B"
-  if echo "$out" | grep -qE "failed|error"; then echo "ARM $name: RED ($out)"; red=$((red+1)); else echo "ARM $name: GREEN ($out)"; bad=$((bad+1)); fi
+  if [ $prc = 1 ]; then echo "ARM $name: RED ($out)"; red=$((red+1));
+  elif [ $prc = 0 ]; then echo "ARM $name: GREEN ($out)"; bad=$((bad+1));
+  else echo "ARM $name: NOT A RESULT, pytest rc=$prc ($out)"; bad=$((bad+1)); fi
 }
 T=hearth/tenantcheck.py; M=hearth/marketplace.py
 arm "trust gitCommitSha, skip the tree" $T \

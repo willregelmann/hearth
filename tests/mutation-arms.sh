@@ -69,9 +69,12 @@ want = s.replace(old, new)
 with open(p, "w") as fh: fh.write(want)
 assert open(p).read() == want, f"mutation did not land on disk: {p}"
 EOF
-  out=$(timeout 300 $PY -m pytest -q -p no:cacheprovider tests/test_pins.py 2>&1 | tail -1)
+  L=$(mktemp); timeout 300 $PY -m pytest -q -p no:cacheprovider tests/test_pins.py >"$L" 2>&1; prc=$?
+  out=$(tail -1 "$L"); rm -f "$L"
   cp -p $B $F; cmp -s $B $F || { echo "RESTORE FAILED"; exit 2; }
-  if echo "$out" | grep -q failed; then echo "ARM $name: RED ($out)"; red=$((red+1)); else echo "ARM $name: GREEN ($out)"; bad=$((bad+1)); fi
+  if [ $prc = 1 ]; then echo "ARM $name: RED ($out)"; red=$((red+1));
+  elif [ $prc = 0 ]; then echo "ARM $name: GREEN ($out)"; bad=$((bad+1));
+  else echo "ARM $name: NOT A RESULT, pytest rc=$prc ($out)"; bad=$((bad+1)); fi
 }
 arm "no interpreter check (same commit in another venv passes)" \
   '        if got["prefix"] != hearth_prefix:' '        if False:'
