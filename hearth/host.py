@@ -57,10 +57,25 @@ SWEEP_S = 5.0
 
 
 def turn_runner(conversation: str, prompt: str, *, turn: str = TURN, timeout: int = 1800) -> int:
-    """One turn in ``conversation`` (a Claude Code session id), through the installed runner."""
+    """One turn in ``conversation`` (a Claude Code session id), through the installed runner.
+
+    The turn's stdout is its reply text, which already sits in the session's transcript, inside
+    the tenant's home. It is discarded here: inherited, it would land in the system journal,
+    which adm and will can read (Ash, Buster 2026-10-16). stderr is kept for the journal: turn
+    writes only its own one-line errors there, never prompt or reply text."""
     return subprocess.run([turn, "--trigger", "frontdesk", "--resume", conversation,
                            "--timeout", str(timeout), prompt],
-                          stdin=subprocess.DEVNULL, timeout=timeout + 60).returncode
+                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                          timeout=timeout + 60).returncode
+
+
+def configure_logging() -> None:
+    """INFO for Hearth, WARNING for the HTTP client: httpx logs every /sync at INFO, one line per
+    seat every few seconds (about 17k a day per tenant on Buster), which buries the host's own."""
+    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.getLogger("hearth").setLevel(logging.INFO)
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def claude_dirs() -> tuple[str, ...]:
@@ -215,7 +230,7 @@ async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: flo
 
 def main() -> int:
     from hearth import tenantcheck
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    configure_logging()
     t = tenantcheck.Tenant(Path(pwd.getpwuid(os.getuid()).pw_dir))
     rc, msg = tenantcheck.frontdesk_home(t)
     if rc != tenantcheck.GREEN:
