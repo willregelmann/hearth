@@ -255,6 +255,15 @@ nolink "$H/.claude" "$plug"
 as_t "$CL" plugin marketplace add "$MKT"
 as_t "$CL" plugin install tapestry@hearth
 as_t "$CL" plugin install frontdesk@hearth
+# A repeat install exits 0 and leaves the OLD tree when the pin moved but the plugin's version
+# didn't; only uninstall+install moves it, and uninstall wipes the plugin's options (Ash ran both
+# on 2.1.288). hearth.pluginsync reinstalls a plugin only if its tree differs from root's export
+# at the pin, puts every option back, and stops if claude is running as the tenant. Before the
+# configure below, so Front Desk's python is set by provision either way.
+for p in tapestry frontdesk; do
+  if [ $DRY = 1 ]; then echo "+ $VENV/bin/python -I -m hearth.pluginsync $CL $p   (as $T: reinstall only if the tree differs from the pin, options kept)"
+  else sudo -u "$T" -H "$HPY" -I -m hearth.pluginsync "$CL" "$p" || die "plugin $p@hearth isn't at the pin (above)"; fi
+done
 if [ $DRY = 1 ]; then echo "+ echo '{\"python\":\"$VENV/bin/python\"}' | $CL plugin configure frontdesk@hearth --values-stdin   (as $T)"
 else printf '{"python":"%s"}\n' "$VENV/bin/python" | sudo -u "$T" -H "$CL" plugin configure frontdesk@hearth --values-stdin \
        || die "plugin configure frontdesk@hearth failed"; fi
