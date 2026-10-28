@@ -10,6 +10,7 @@ What an operator with root runs on the host to make, check, move and remove agen
 | Check | Runs the faculty check for an agent, as that agent |
 | Move | Starts or aborts a [move](../capabilities/MOVE.md) |
 | Lend and revoke | Declares or revokes a loan to an agent |
+| Manifest | Changes which plugins an agent's manifest declares |
 
 ## Invariants
 

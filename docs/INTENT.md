@@ -16,8 +16,10 @@ Hearth is built on the idea that the agent, not the conversation, is the unit.
 It has one identity, one memory it writes itself, and one account of what it
 has been asked and what it owes. Conversations are threads it holds, not
 separate minds. It lives as itself on its host, so nothing it holds belongs to
-anyone else and nothing a neighbour does can stop it. When it can't do
-something, it says so where the asker will see it.
+anyone else and nothing a neighbour does can stop it. It can wait for real:
+it ends a turn with a wake set, and comes back in the same conversation when
+the time, the answer or the peer arrives, whether or not anyone has it open.
+When it can't do something, it says so where the asker will see it.
 
 If an agent ever drops a request, forgets something it owes, or loses an
 intention because of which conversation, channel or restart it happened in,
