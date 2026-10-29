@@ -41,9 +41,16 @@ EOF
   else echo "ARM $name: NOT A RESULT, pytest rc=$prc ($out)"; bad=$((bad+1)); fi
 }
 arm "#55's shape: one desk on the host's own seat, no seat per conversation" "session_s_alarm" \
-  "            want = {s for s in want if not host.is_attended(s)}" "            want = set()"
+  "            want = {s for s in want if not host.is_attended(s)} | {main.seat}" "            want = {main.seat}"
 arm "serve claims for a seat a live session has open" "open_elsewhere" \
-  "            want = {s for s in want if not host.is_attended(s)}" "            pass"
+  "            want = {s for s in want if not host.is_attended(s)} | {main.seat}" "            want = want | {main.seat}"
+arm "no seat but the conversations' (nothing takes a request when none is listed)" "no_conversation" \
+  "            want = {s for s in want if not host.is_attended(s)} | {main.seat}" "            want = {s for s in want if not host.is_attended(s)}"
+arm "a seat without the offers' handlers" "offer_is_carried_out" \
+  "        await offers.attach(desk, catalog)" "        pass"
+arm "only the host's own seat holds the handlers" "while_no_session_is_open" \
+  "        await offers.attach(desk, catalog)" "        if desk.seat == main.seat:
+            await offers.attach(desk, catalog)"
 arm "a turn starts while the session is open" "host_a_wake_for_an_open_session" \
   "                if self.is_attended(conversation):" "                if False:"
 arm "arrivals not marked shown during the turn" "own_server_does_not_wake" \

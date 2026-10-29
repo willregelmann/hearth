@@ -15,7 +15,7 @@ import uuid
 
 import pytest
 
-from frontdesk import Desk
+from frontdesk import Desk, wire
 from frontdesk.hosts.claude_code import sessions
 from hearth import host as hh
 
@@ -46,7 +46,9 @@ async def home(tmp_path):
 
 
 async def session_alarm(home, session, text, in_ms=1500, due_at=None):
-    """What a session's own server does for a self-alarm: list on its seat, send, exit.
+    """What a session's own server does for a self-alarm: list on its seat, send, exit. The
+    server has been at the desk on its seat since the session started, so it has a place of its
+    own there; without one, a seat starts from wherever another seat of the identity left off.
 
     ``due_at``, if given, is appended with the ``time.monotonic()`` reading at which this
     alarm comes due. The deadline starts when ``send`` is called, which is after an
@@ -55,6 +57,7 @@ async def session_alarm(home, session, text, in_ms=1500, due_at=None):
     """
     desk = Desk(home, seat=session)
     try:
+        await desk.pump()
         handle = await desk.list_channel(session, "set the alarm")
         if due_at is not None:
             due_at.append(time.monotonic() + in_ms / 1000.0)
@@ -269,6 +272,64 @@ async def test_a_wake_left_mid_turn_by_a_stopped_host_runs_once_it_is_back(home)
     turns = Turns()
     await serving(home, turns, lambda: turns.calls and state(home, receipt) == "taken_in")
     assert "ALARM-NOTE killed" in turns.calls[0][1]
+
+
+@pytest.fixture
+async def asked(tmp_path):
+    """An agent whose offers file lists ``echo``, and a peer in the same register to ask it."""
+    ns = f"h51o-{uuid.uuid4().hex[:8]}"
+    keeper = await Desk.join(DESK, "keeper", tmp_path / "keeper", kind="person", namespace=ns)
+    me = await Desk.join(DESK, "ember", tmp_path / "me", kind="agent", namespace=ns, answerable=keeper.me)
+    await me.close()
+    (tmp_path / "me" / "offers.json").write_text(json.dumps({"echo": {
+        "description": "Echo", "agree": "nobody", "listed": True,
+        "command": [sys.executable, "-c", "print('echoed')"]}}))
+    wren = await Desk.join(DESK, "wren", tmp_path / "wren", kind="agent", namespace=ns, answerable=keeper.me)
+    yield tmp_path / "me", wren
+    await wren.close()
+    await keeper.close()
+
+
+async def _ask_echo(home, wren):
+    outcome = []
+
+    async def ask_and_collect():
+        end = time.monotonic() + 20
+        while not any("echo" in entry.offers for entry in await wren.find("ember")):   # serve lists it
+            assert time.monotonic() < end, "the offer was never listed"
+            await asyncio.sleep(0.3)
+        await wren.list_channel("w1")
+        await wren.ask("ember", "echo", {}, conversation="w1")
+        while not outcome and time.monotonic() < end:
+            await wren.pump(timeout_ms=500)
+            outcome.extend(a.outcome for a in await wren.take("w1", mark=False) if a.kind == wire.OUTCOME)
+
+    turns = Turns()
+    asking = []
+    await serving(home, turns, lambda: (asking or asking.append(asyncio.create_task(ask_and_collect())))
+                  and asking[0].done())
+    asking[0].result()
+    return outcome
+
+
+async def test_an_offer_is_carried_out_while_no_session_is_open(asked):
+    """frontdesk docs/interfaces/HOST.md: under Hearth an offer is carried out whether or not a
+    session is open. A conversation from an earlier session is listed, and nothing has it open."""
+    home, wren = asked
+    closed = Desk(home, seat="sess-closed")
+    try:
+        await closed.list_channel("sess-closed", "an earlier session")
+    finally:
+        await closed.close()
+    [outcome] = await _ask_echo(home, wren)
+    assert outcome["result"] == "done" and outcome["detail"] == "echoed", outcome
+
+
+async def test_an_offer_is_carried_out_when_no_conversation_is_listed(asked):
+    """frontdesk docs/interfaces/HOST.md, with no conversation listed at all."""
+    home, wren = asked
+    [outcome] = await _ask_echo(home, wren)
+    assert outcome["result"] == "done" and outcome["detail"] == "echoed", outcome
 
 
 # Host level, where the test controls who pumps: the cases a sweep or a lucky claim can hide.
