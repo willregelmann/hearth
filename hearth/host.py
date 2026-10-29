@@ -63,6 +63,10 @@ logger = logging.getLogger("hearth.host")
 TURN = "/opt/hearth/home/turn"
 SWEEP_S = 5.0
 RETRY_S, RETRY_MAX_S = 30.0, 1800.0
+# The turn's reply text is discarded (turn_runner), so the agent has to know nobody reads it.
+RESUMED = ("Hearth started this turn because a message came for this conversation while nobody had it "
+           "open. Your reply text isn't delivered to anyone: whatever someone should see, send it through "
+           "the Front Desk.")
 
 
 def turn_runner(conversation: str, prompt: str, *, turn: str = TURN, timeout: int = 1800) -> int:
@@ -198,7 +202,7 @@ class HearthHost:
                     return
                 refs = [a.ref for a in arrivals]
                 self.desk.mark_shown(refs)
-                prompt = "\n\n".join(wire.render(a) for a in arrivals)
+                prompt = "\n\n".join([RESUMED] + [wire.render(a) for a in arrivals])
                 try:
                     rc = await asyncio.to_thread(self.runner, conversation, prompt)
                 except Exception as exc:
