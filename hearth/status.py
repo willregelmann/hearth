@@ -111,12 +111,7 @@ class Reporter(rpc.StatusServicer):
 async def serve(reporter: Reporter, path: Path) -> grpc.aio.Server:
     """Serve ``reporter`` on a Unix socket at ``path``. Refuses a directory anyone else can enter."""
     path = Path(path)
-    try:
-        st = path.parent.stat()
-    except OSError as exc:
-        raise StatusError(f"{path.parent}: {exc}") from exc
-    if st.st_mode & stat.S_IRWXO:
-        raise StatusError(f"{path.parent} is open to every user ({stat.filemode(st.st_mode)})")
+    private_dir(path.parent)
     if path.is_socket():
         path.unlink()   # left by a host that didn't stop cleanly
     server = grpc.aio.server()
@@ -126,4 +121,15 @@ async def serve(reporter: Reporter, path: Path) -> grpc.aio.Server:
     except RuntimeError as exc:
         raise StatusError(f"{path}: {exc}") from exc
     await server.start()
+    path.chmod(0o660)   # the directory decides who reaches it; the board's grant is its group
     return server
+
+
+def private_dir(d: Path) -> None:
+    """Refuse a directory every user can enter: a socket in it would be anyone's to read."""
+    try:
+        st = Path(d).stat()
+    except OSError as exc:
+        raise StatusError(f"{d}: {exc}") from exc
+    if st.st_mode & stat.S_IRWXO:
+        raise StatusError(f"{d} is open to every user ({stat.filemode(st.st_mode)})")

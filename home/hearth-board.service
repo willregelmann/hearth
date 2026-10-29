@@ -1,0 +1,28 @@
+# hearth-board.service: the operator's board (docs/interfaces/BOARD.md), installed by home/board.
+# Runs as hearth-board, never root or an agent (docs/decisions/0013), from root's venv. It reads each
+# agent's status through the group grant on /run/hearth/<agent>, and serves the page on a socket
+# whose directory only hearth-operators (the operator's proxy) can enter.
+[Unit]
+Description=Hearth board (the operator's page)
+After=network-online.target
+
+[Service]
+User=hearth-board
+Group=hearth-board
+Environment=PATH=/usr/bin:/bin LANG=C.UTF-8
+RuntimeDirectory=hearth-board
+RuntimeDirectoryMode=0750
+# setgid, so the socket takes hearth-operators too: the proxy needs write on the socket itself
+ExecStartPre=+/bin/chgrp hearth-operators /run/hearth-board
+ExecStartPre=+/bin/chmod g+s /run/hearth-board
+ExecStart=/opt/hearth/venv/bin/python -I -m hearth.board --socket /run/hearth-board/board.sock
+Restart=on-failure
+RestartSec=10
+# 78: refused to start (as root, as an agent, or in an open directory). A person owes a step.
+RestartPreventExitStatus=78
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -22,3 +22,6 @@ dev = ["pytest>=9.1.1,<10", "pytest-asyncio>=1,<2"]
 
 [tool.setuptools.packages.find]
 include = ["hearth*"]
+
+[tool.setuptools.package-data]
+hearth = ["board.html", "status.proto"]

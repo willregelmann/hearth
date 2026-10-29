@@ -40,6 +40,13 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   every later run, stopping rather than replacing anything. A tenant's existing copy is judged by
   the same pinned hash. A copy placed in the store by hand (e.g. offline) is accepted on the same
   terms. `store-controls` tests this block without root; `store-arms.sh` shows each guard matters.
+- `board`: run by Will with sudo, once per host. Installs the operator's board
+  (docs/interfaces/BOARD.md) as `hearth-board.service`, running as the system user `hearth-board`,
+  never root or an agent (docs/decisions/0013). It reads each agent's status on
+  `/run/hearth/<tenant>/status.sock`, whose directory each agent's host gives the `hearth-board`
+  group (setgid, so the socket takes it too), and serves the page on
+  `/run/hearth-board/board.sock`, which only `hearth-operators` (the operator's proxy) can reach.
+  `tests/linux-grants.sh` shows those grants hold on Linux.
 - Hearth's plugins (docs/decisions/0009). `provision` builds three root-owned, tenant-read-only
   things under /opt/hearth: `venv` (hearth with frontdesk and tapestry at the pins), `marketplace`
   (a directory marketplace generated from `hearth.pins`) and `plugins/<name>/<sha>` (git's tree at

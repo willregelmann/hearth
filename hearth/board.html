@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Board</title>
+<style>
+  :root {
+    --bg: #faf8f5; --fg: #1f1d1a; --muted: #6b665e; --line: #e4dfd7; --card: #ffffff;
+    --ok: #2f6f3e; --warn: #9a5b00; --bad: #a3271c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #171614; --fg: #ece8e1; --muted: #a39d93; --line: #2e2b27; --card: #1f1d1a;
+            --ok: #7cc48e; --warn: #e0a65a; --bad: #ef7f73; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  #fresh { color: var(--muted); margin: 0 0 16px; }
+  #fresh.stale { color: var(--bad); font-weight: 600; }
+  .note { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .agents { display: grid; gap: 12px; }
+  .agent { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  .name { font-weight: 600; font-size: 16px; }
+  .pill { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 10px 0 0; font-size: 14px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hearth Board</h1>
+  <p id="fresh">Waiting for the first read…</p>
+  <p class="note" id="watch"></p>
+  <div class="agents" id="agents"></div>
+</main>
+<script>
+// Every value from an agent is written with textContent, never as markup: an agent's report is
+// its own account, and can't add anything to the page.
+const $ = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = String(text); return e; };
+const when = s => s ? new Date(s * 1000).toLocaleString() : "never";
+let last = 0, interval = 5;
+
+function row(dl, k, v) { dl.append($("dt", "", k), $("dd", "", v)); }
+
+function render(snap) {
+  last = Date.now(); interval = snap.interval_s || interval;
+  const fresh = document.getElementById("fresh");
+  fresh.className = snap.stale ? "stale" : "";
+  fresh.textContent = snap.checked_at === null
+    ? "Stale: the board hasn't finished a read yet."
+    : `${snap.stale ? "Stale: " : ""}last full read ${snap.age_s}s ago, ${snap.read} of ${snap.declared} declared agents read.`;
+  document.getElementById("watch").textContent = snap.watch.built ? "" : `Watch isn't running: ${snap.watch.reason}.`;
+  const list = document.getElementById("agents");
+  list.replaceChildren(...snap.agents.map(a => {
+    const card = $("section", "agent"), head = $("div", "head");
+    head.append($("span", "name", a.name),
+                $("span", "pill " + (a.host === "active" ? "ok" : "bad"), "host " + a.host),
+                $("span", "pill " + (a.reachable ? "ok" : "bad"), a.reachable ? "status read" : "unreachable"));
+    card.append(head);
+    const dl = $("dl");
+    if (!a.reachable) { row(dl, "Why", a.unreachable); card.append(dl); return card; }
+    const s = a.status;
+    row(dl, "Live turns", s.live_turns.length ? s.live_turns.map(t => `${t.thread} since ${when(t.started)}`).join("; ") : "none");
+    row(dl, "Waiting", s.pending_wakes.length ? s.pending_wakes.map(w =>
+      `${w.thread}: ${w.waiting} waiting` + (w.open_elsewhere ? ", open in a session" : "") +
+      (w.failures ? `, ${w.failures} failed, next try ${w.retry_at ? when(w.retry_at) : "now"}` : "")).join("; ") : "none");
+    const t = s.recent_turns[s.recent_turns.length - 1];
+    row(dl, "Last turn", t ? `${t.ok ? "ok" : "failed"} at ${when(t.ended)} (${t.trigger}${t.error ? ": " + t.error : ""})` : "none yet");
+    for (const n of s.not_reported) row(dl, "Not reported", `${n.report}: ${n.reason}`);
+    row(dl, "Reported at", when(s.as_of));
+    card.append(dl);
+    return card;
+  }));
+}
+
+function connect() {
+  const es = new EventSource("api/events");
+  es.onmessage = e => render(JSON.parse(e.data));
+  es.onerror = () => { es.close(); setTimeout(connect, 3000); };
+}
+// A board that stops answering reads as stale, never as all clear.
+setInterval(() => {
+  if (last && Date.now() - last > 3000 * interval) {
+    const f = document.getElementById("fresh");
+    f.className = "stale"; f.textContent = `Stale: nothing heard from the board since ${new Date(last).toLocaleTimeString()}.`;
+  }
+}, 1000);
+connect();
+</script>
+</body>
+</html>
