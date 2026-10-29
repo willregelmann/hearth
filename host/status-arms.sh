@@ -45,6 +45,8 @@ arm "a status that can't be served stops the host" hearth/host.py "no_other_agen
   "        except ZeroDivisionError as exc:
             logger.error(\"status not served: %s\", exc)"
 arm "a directory every user can enter is served" hearth/status.py "no_other_agent_can_read" \
-  "    if st.st_mode & stat.S_IRWXO:" "    if False:"
+  "    if st.st_mode & stat.S_IRWXO:
+        raise" "    if False:
+        raise"
 echo "arms red: $red, arms bad: $bad"
 [ $bad = 0 ]
