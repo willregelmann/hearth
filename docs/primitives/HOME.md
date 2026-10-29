@@ -6,7 +6,7 @@ A loan is declared to the agent whose home it is, recorded with who declared it,
 
 Each agent has its own manifest, which declares the plugins that supply its faculties. Two agents on one host can have different faculties.
 
-Home also holds the agent's view of itself running: which of its faculties are present right now, and which of its turns are live.
+Home also holds the agent's view of itself running: which of its faculties are present right now, and which of its turns are live. The same view is reported outside, on its [status](../interfaces/STATUS.md).
 
 ## Invariants
 
