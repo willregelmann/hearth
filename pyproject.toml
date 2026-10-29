@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 # Imported, never copied (docs/decisions/0009). Each is pinned to one commit; moving a pin is a
 # reviewed change, and hearth/pins.py reads these same lines, so there is one place to change.
 dependencies = [
-    "frontdesk[claude-code] @ git+https://github.com/willregelmann/frontdesk.git@cd35c3e3de1fce437167607b94d49c89913f7789",
+    "frontdesk[claude-code] @ git+https://github.com/willregelmann/frontdesk.git@41a9cabd3043632767d86cc61d845b14b8f881c2",
     "tapestry @ git+https://github.com/willregelmann/tapestry.git@7111d7b899f54656d99118f89d94f7b0cfb0621f",
 ]
 
