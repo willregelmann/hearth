@@ -27,7 +27,7 @@ No other household member is ever required to check it. Anything they must act o
 - **Nothing that reaches the board is lost.** An entry stays until a person has seen it or what caused it is gone.
 - **The operator talks to an agent on a channel, as a sender like any other.** The board never starts a turn or writes into a home.
 - **What serves the board runs as neither root nor any agent.** Its reach is reading each agent's status, sending on channels as the operator, and restarting an agent's process. Anything that needs more is a [command](COMMANDS.md).
-- Only the operator can open the board. No agent reaches it.
+- Only the operator can open the board or act through it. No agent reaches it, and no other page the operator has open can act through it.
 - Every declared agent is listed. One whose status can't be read shows as unreachable, never as idle and never left out.
 - A restart is shown to the agent at its next [wake](../capabilities/WAKE.md), and restarting one agent never stops another.
 - The board never quotes a fact outside its audience.

@@ -51,4 +51,9 @@ Board installed. Next, as Will:
        sudo usermod -aG hearth-operators caddy
        reverse_proxy unix//run/hearth-board/board.sock
      with your login in front of it. Only the operator opens the board.
+  3. To talk to agents from the board, sign it in as your own Front Desk identity (a person, never
+     an agent). It keeps a token of its own, not your password; \`frontdesk --as <you> proof\`
+     prints the password to type:
+       sudo -u hearth-board $VENV/bin/python -I -m hearth.board sign-in \\
+         --desk http://127.0.0.1:8008 --user @<you>:<desk>
 EOF

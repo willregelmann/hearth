@@ -46,7 +46,9 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   `/run/hearth/<tenant>/status.sock`, whose directory each agent's host gives the `hearth-board`
   group (setgid, so the socket takes it too), and serves the page on
   `/run/hearth-board/board.sock`, which only `hearth-operators` (the operator's proxy) can reach.
-  `tests/linux-grants.sh` shows those grants hold on Linux.
+  `tests/linux-grants.sh` shows those grants hold on Linux. Talking to agents from the board needs
+  it signed in once as the operator's Front Desk identity (`hearth.board sign-in`, as
+  `hearth-board`), which keeps a token in `/var/lib/hearth-board`, never the password.
 - Hearth's plugins (docs/decisions/0009). `provision` builds three root-owned, tenant-read-only
   things under /opt/hearth: `venv` (hearth with frontdesk and tapestry at the pins), `marketplace`
   (a directory marketplace generated from `hearth.pins`) and `plugins/<name>/<sha>` (git's tree at

@@ -156,7 +156,7 @@ def test_the_board_shows_its_own_freshness(fleet, serve_board):
     assert stale["stale"] and stale["age_s"] > 15
 
 
-def test_the_board_never_starts_a_turn_or_writes_anything(fleet, serve_board):
+def test_the_board_never_starts_a_turn_or_writes_into_a_home(fleet, serve_board):
     fleet.declare("alice", 2001)
     fake = fleet.up("alice", report())
     board = fleet.board()

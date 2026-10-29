@@ -38,7 +38,9 @@ arm "freshness by the last request, not the last read" "own_freshness" \
   "        snap[\"age_s\"] = None if snap[\"checked_at\"] is None else round(now - snap[\"checked_at\"], 1)" \
   "        snap[\"age_s\"] = None if snap[\"checked_at\"] is None else 0.0"
 arm "the board takes writes" "never_starts_a_turn" \
-  "        do_POST = do_PUT = do_PATCH = do_DELETE = _refuse" "        do_POST = do_PUT = do_PATCH = do_DELETE = do_GET"
+  "        do_PUT = do_PATCH = do_DELETE = _refuse" "        do_PUT = do_PATCH = do_DELETE = do_GET"
+arm "the board takes a POST that isn't the operator talking" "never_starts_a_turn" \
+  "                return self._refuse()" "                return self.do_GET()"
 arm "the board runs as an agent" "neither_root_nor_any_agent" \
   "            if agent_uid == uid:" "            if False:"
 arm "the board serves from a directory anyone can enter" "only_the_operator" \

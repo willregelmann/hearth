@@ -15,7 +15,10 @@ RuntimeDirectoryMode=0750
 # setgid, so the socket takes hearth-operators too: the proxy needs write on the socket itself
 ExecStartPre=+/bin/chgrp hearth-operators /run/hearth-board
 ExecStartPre=+/bin/chmod g+s /run/hearth-board
-ExecStart=/opt/hearth/venv/bin/python -I -m hearth.board --socket /run/hearth-board/board.sock
+# The operator's sign-in for Talk (hearth.talk): a token only this user can read, never the password.
+StateDirectory=hearth-board
+StateDirectoryMode=0700
+ExecStart=/opt/hearth/venv/bin/python -I -m hearth.board --socket /run/hearth-board/board.sock --operator /var/lib/hearth-board/operator.json
 Restart=on-failure
 RestartSec=10
 # 78: refused to start (as root, as an agent, or in an open directory). A person owes a step.

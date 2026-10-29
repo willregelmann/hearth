@@ -9,16 +9,21 @@ What holds:
   - The board shows its own freshness: every reply says when the last full read finished, how
     many of the declared agents it read, and whether that is stale by the board's own clock. A
     page that stops hearing from the board says so too.
-  - It only reads. Status is read-only (hearth.status), and anything but GET is refused.
+  - It reads status and never writes it: status is read-only (hearth.status). The one thing it
+    sends is the operator's message to an agent, on the desk (hearth.talk). Anything else but GET
+    is refused.
   - It runs as neither root nor any agent, and refuses to start as either.
   - Only the operator reaches it: it refuses a socket directory every user can enter. The
-    operator's proxy is granted the directory's group.
+    operator's proxy is granted the directory's group. Nothing another site's page sends through
+    the operator's browser is acted on: a send must be same-origin JSON.
   - What an agent reports is filed under the name the registry gives that agent's socket, never
     the name it reports, and the page writes every value as text.
 
     python -I -m hearth.board --socket /run/hearth-board/board.sock     as hearth-board
+    python -I -m hearth.board sign-in --desk URL --user @will:desk     as hearth-board, once
 """
 import argparse
+import getpass
 import json
 import logging
 import os
@@ -34,7 +39,7 @@ from typing import Callable, Optional
 import grpc
 from google.protobuf.json_format import MessageToDict
 
-from hearth import status
+from hearth import status, talk as talking
 from hearth import status_pb2 as pb
 from hearth import status_pb2_grpc as rpc
 
@@ -43,6 +48,7 @@ logger = logging.getLogger("hearth.board")
 REGISTRY = Path("/var/lib/hearth/tenants")
 RUN = Path("/run/hearth")
 INTERVAL_S = 5.0
+MAX_BODY = 64 * 1024
 STALE_AFTER = 3   # read intervals without a full read before the board calls itself stale
 WATCH = {"built": False, "reason": "no agent records a sweep yet, so no ledger can be judged unattended"}
 
@@ -115,6 +121,9 @@ class Board:
             self._changed.notify_all()
         return snap
 
+    def names(self) -> list[str]:
+        return [name for name, _, _ in self.declared()]
+
     def snapshot(self) -> dict:
         with self._changed:
             snap = dict(self._snapshot)
@@ -140,7 +149,15 @@ class Board:
 PAGE = (Path(__file__).parent / "board.html").read_bytes()
 
 
-def handler(board: Board):
+def _route(path: str) -> tuple[Optional[str], str]:
+    """``/api/agents/<name>/<what>`` as (name, what); anything else as (None, path)."""
+    parts = path.split("/")
+    if len(parts) == 5 and parts[:3] == ["", "api", "agents"] and parts[3]:
+        return parts[3], parts[4]
+    return None, path
+
+
+def handler(board: Board, talk: Optional[talking.Talk] = None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -155,15 +172,57 @@ def handler(board: Board):
             self.end_headers()
             self.wfile.write(body)
 
+        def _json(self, code: int, value) -> None:
+            self._send(code, json.dumps(value).encode(), "application/json")
+
+        def _snapshot(self) -> dict:
+            snap = board.snapshot()
+            snap["talk"] = {"ready": False, "reason": "not served by this board"} if talk is None else \
+                {"ready": (why := talk.ready()) is None, "reason": why}
+            return snap
+
         def do_GET(self):
+            name, what = _route(self.path)
             if self.path == "/":
                 self._send(200, PAGE, "text/html; charset=utf-8")
             elif self.path == "/api/agents":
-                self._send(200, json.dumps(board.snapshot()).encode(), "application/json")
+                self._json(200, self._snapshot())
             elif self.path == "/api/events":
                 self._events()
+            elif name and what == "thread" and talk is not None:
+                self._talk(lambda: {"messages": talk.thread(name)})
             else:
                 self._send(404, b"not found\n", "text/plain")
+
+        def do_POST(self):
+            name, what = _route(self.path)
+            if not (name and what in ("talk", "read") and talk is not None):
+                return self._refuse()
+            # Another site's page can make the operator's browser POST here, with the proxy's login
+            # attached. A browser marks it cross-site, and can't send it as JSON without asking first,
+            # which nothing here answers.
+            if self.headers.get("Sec-Fetch-Site", "same-origin") != "same-origin" \
+                    or self.headers.get_content_type() != "application/json":
+                return self._json(403, {"error": "only the board's own page can send"})
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > MAX_BODY:
+                return self._json(413, {"error": "too long"})
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except ValueError:
+                return self._json(400, {"error": "not JSON"})
+            if not isinstance(body, dict):
+                return self._json(400, {"error": "not a JSON object"})
+            if what == "talk":
+                self._talk(lambda: {"sent": talk.say(name, body.get("text"))})
+            else:
+                self._talk(lambda: talk.read(name, body.get("up_to")) or {"read": True})
+
+        def _talk(self, act) -> None:
+            try:
+                self._json(200, act())
+            except talking.TalkError as exc:
+                self._json(exc.code, {"error": exc.reason})
 
         def _events(self):
             self.send_response(200)
@@ -172,7 +231,7 @@ def handler(board: Board):
             self.end_headers()
             try:
                 while True:
-                    self.wfile.write(b"data: " + json.dumps(board.snapshot()).encode() + b"\n\n")
+                    self.wfile.write(b"data: " + json.dumps(self._snapshot()).encode() + b"\n\n")
                     self.wfile.flush()
                     board.wait(board.interval_s)
             except (BrokenPipeError, ConnectionResetError):
@@ -181,11 +240,11 @@ def handler(board: Board):
 
         def _refuse(self):
             self.send_response(405)
-            self.send_header("Allow", "GET")
+            self.send_header("Allow", "GET" if talk is None else "GET, POST")
             self.send_header("Content-Length", "0")
             self.end_headers()
 
-        do_POST = do_PUT = do_PATCH = do_DELETE = _refuse
+        do_PUT = do_PATCH = do_DELETE = _refuse
 
     return Handler
 
@@ -198,7 +257,8 @@ class UnixHTTPServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer)
         return conn, ("operator", 0)   # BaseHTTPRequestHandler expects a (host, port) address
 
 
-def serve(board: Board, sock: Path, *, uid: Optional[int] = None) -> UnixHTTPServer:
+def serve(board: Board, sock: Path, *, uid: Optional[int] = None,
+          talk: Optional[talking.Talk] = None) -> UnixHTTPServer:
     """Check who this is and where it serves, then bind. The caller runs serve_forever."""
     board.refuse_to_run_as(os.getuid() if uid is None else uid)
     try:
@@ -207,21 +267,44 @@ def serve(board: Board, sock: Path, *, uid: Optional[int] = None) -> UnixHTTPSer
         raise Refused(str(exc)) from exc
     if sock.is_socket():
         sock.unlink()
-    server = UnixHTTPServer(str(sock), handler(board))
+    server = UnixHTTPServer(str(sock), handler(board, talk))
     sock.chmod(0o660)   # the directory's group is the operator's proxy
     return server
 
 
+def sign_in(argv) -> int:
+    ap = argparse.ArgumentParser(prog="hearth.board sign-in",
+                                 description="Sign the board in as the operator. Asks for the password, or reads it from stdin.")
+    ap.add_argument("--desk", required=True, help="the desk's URL")
+    ap.add_argument("--user", required=True, help="the operator's full identity, e.g. @will:desk")
+    ap.add_argument("--operator", type=Path, default=talking.OPERATOR)
+    ap.add_argument("--registry", type=Path, default=REGISTRY)
+    ap.add_argument("--namespace", default="", help="a trial's namespace, never the main register")
+    a = ap.parse_args(argv)
+    password = getpass.getpass("password: ") if sys.stdin.isatty() else sys.stdin.readline().rstrip("\n")
+    try:
+        who = talking.sign_in(a.desk, a.user, password, Board(a.registry).names(), a.operator, a.namespace)
+    except talking.TalkError as exc:
+        print(f"hearth.board: {exc}", file=sys.stderr)
+        return 78
+    print(f"the board talks as {who} ({a.operator})")
+    return 0
+
+
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["sign-in"]:
+        return sign_in(argv[1:])
     ap = argparse.ArgumentParser(prog="hearth.board")
     ap.add_argument("--socket", type=Path, required=True)
     ap.add_argument("--registry", type=Path, default=REGISTRY)
     ap.add_argument("--run", type=Path, default=RUN)
+    ap.add_argument("--operator", type=Path, default=talking.OPERATOR)
     a = ap.parse_args(argv)
     logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     board = Board(a.registry, a.run)
     try:
-        server = serve(board, a.socket)
+        server = serve(board, a.socket, talk=talking.Talk(board.names, a.operator))
     except Refused as exc:
         print(f"hearth.board: {exc}", file=sys.stderr)
         return 78   # EX_CONFIG: a person owes a step; systemd doesn't loop on it
