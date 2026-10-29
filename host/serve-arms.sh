@@ -56,6 +56,10 @@ arm "one turn per wake (nothing taken mid-turn runs)" "host_what_the_turn" \
 arm "deferred is never retried" "host_a_wake_for_an_open_session" \
   "                self.deferred.discard(conversation)
                 await self.wake(conversation)" "                pass"
+arm "a failed turn waits for another message or a restart" "tried_again" \
+  "            await host.retry_failed()" "            pass"
+arm "a host killed mid-turn strands what it was showing" "stopped_host" \
+  "    await host.recover()" "    pass"
 arm "the exact current binary only (B: a session on the old version)" "before_an_update" \
   '        if exe is None or not any(exe.startswith(d.rstrip("/") + "/") for d in dirs):' \
   '        if exe is None or os.path.basename(exe) != "2.1.300":'

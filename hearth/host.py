@@ -12,10 +12,14 @@ What holds:
     messages in while a turn is running.
   - One turn at a time per conversation. A wake for a conversation that is mid-turn runs after
     it, never beside it; different conversations run in parallel.
-  - Arrivals count as taken in only after the turn that was shown them finished ok. They are
-    marked shown while it runs, so the turn's own Front Desk server, recovering on the same seat,
-    doesn't wake them a second time. A failed turn puts them back to arrived, logged at ERROR,
-    and the next wake (or the desk's recovery after a restart) shows them again.
+  - Arrivals count as taken in only after the turn that was shown them finished ok
+    (docs/capabilities/WAKE.md). They are marked shown while it runs, so the turn's own Front
+    Desk server, recovering on the same seat, doesn't wake them a second time. A failed turn puts
+    them back to arrived, logged at ERROR, and the conversation is woken again after a backoff
+    that doubles with each failure in a row.
+  - A wake outlives a restart. Front Desk's own recovery wakes only what is still arrived, so a
+    host killed mid-turn would leave its arrivals shown and never woken; recover() wakes every
+    conversation with a waking message pending in either state.
   - What arrives for the conversation during a turn runs in a next turn, straight after. Whether
     a channel push reaches a `claude -p` turn is not relied on.
   - A conversation that a live Claude Code process outside this host has open is never resumed:
@@ -40,10 +44,12 @@ installed turn runner, run as the tenant, resuming the session. Tests pass a fak
 import asyncio
 import json
 import logging
+import math
 import os
 import pwd
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -54,6 +60,7 @@ logger = logging.getLogger("hearth.host")
 
 TURN = "/opt/hearth/home/turn"
 SWEEP_S = 5.0
+RETRY_S, RETRY_MAX_S = 30.0, 1800.0
 
 
 def turn_runner(conversation: str, prompt: str, *, turn: str = TURN, timeout: int = 1800) -> int:
@@ -131,12 +138,15 @@ def attended(home: Path, conversation: str, *, dirs: Optional[tuple[str, ...]] =
 
 class HearthHost:
     def __init__(self, desk, runner: Callable[[str, str], int] = turn_runner,
-                 is_attended: Optional[Callable[[str], bool]] = None):
+                 is_attended: Optional[Callable[[str], bool]] = None,
+                 retry_s: float = RETRY_S, retry_max_s: float = RETRY_MAX_S):
         self.desk, self.runner = desk, runner
         self.is_attended = is_attended or (lambda c: attended(desk.state_dir, c))
+        self.retry_s, self.retry_max_s = retry_s, retry_max_s
         self._locks: dict[str, asyncio.Lock] = {}
         self._tasks: set[asyncio.Task] = set()
         self.deferred: set[str] = set()
+        self.failed: dict[str, tuple[int, float]] = {}   # conversation: (failures in a row, when to try again)
 
     async def wake(self, conversation: str) -> None:
         task = asyncio.get_running_loop().create_task(self._turn(conversation))
@@ -158,6 +168,21 @@ class HearthHost:
                 self.deferred.discard(conversation)
                 await self.wake(conversation)
 
+    async def retry_failed(self) -> None:
+        """Wake again what a failed turn left pending, once its backoff has passed."""
+        now = time.monotonic()
+        for conversation, (failures, due) in list(self.failed.items()):
+            if due <= now:
+                self.failed[conversation] = (failures, math.inf)   # one retry in flight, not one per sweep
+                await self.wake(conversation)
+
+    async def recover(self) -> None:
+        """Wake every conversation with a waking message still pending, shown or not."""
+        for channel in self.desk.ledger.live_channels():
+            if any(json.loads(row["arrival"]).get("arrive") == wire.WAKE
+                   for row in self.desk.ledger.pending(channel["handle"])):
+                await self.wake(channel["conversation"])
+
     async def _turn(self, conversation: str) -> None:
         async with self._locks.setdefault(conversation, asyncio.Lock()):
             while True:
@@ -167,6 +192,7 @@ class HearthHost:
                     return
                 arrivals = await self.desk.take(conversation, mark=False)
                 if not arrivals:
+                    self.failed.pop(conversation, None)
                     return
                 refs = [a.ref for a in arrivals]
                 self.desk.mark_shown(refs)
@@ -181,10 +207,14 @@ class HearthHost:
                         row = self.desk.ledger.inbox_row(ref)
                         if row is not None and row["state"] == "shown":
                             self.desk.ledger.set_state(ref, wire.ARRIVED)
-                    logger.error("turn in %s failed (rc %s); %d message(s) stay pending",
-                                 conversation, rc, len(arrivals))
+                    failures = self.failed.get(conversation, (0, 0.0))[0] + 1
+                    backoff = min(self.retry_s * 2 ** (failures - 1), self.retry_max_s)
+                    self.failed[conversation] = (failures, time.monotonic() + backoff)
+                    logger.error("turn in %s failed (rc %s); %d message(s) stay pending, trying again in %ds",
+                                 conversation, rc, len(arrivals), backoff)
                     return
                 await self.desk.commit(conversation, also=refs)
+                self.failed.pop(conversation, None)
 
 
 async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: float = SWEEP_S,
@@ -196,6 +226,7 @@ async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: flo
     main.host = host
     seats: dict[str, tuple[Desk, asyncio.Task]] = {}
     stop = stop or asyncio.Event()
+    await host.recover()
 
     async def drop(seat):
         desk, task = seats.pop(seat)
@@ -217,6 +248,7 @@ async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: flo
                 desk = Desk(home, seat=seat)
                 seats[seat] = (desk, asyncio.get_running_loop().create_task(desk.run(host, poll_ms=poll_ms)))
             await host.retry_deferred()
+            await host.retry_failed()
             try:
                 await asyncio.wait_for(stop.wait(), sweep_s)
             except asyncio.TimeoutError:

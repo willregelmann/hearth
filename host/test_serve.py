@@ -64,12 +64,12 @@ async def session_alarm(home, session, text, in_ms=1500, due_at=None):
         await desk.close()
 
 
-async def serving(home, turns, until, *, attended=lambda c: False, timeout=25.0):
+async def serving(home, turns, until, *, attended=lambda c: False, timeout=25.0, **host):
     stop = asyncio.Event()
     made = []
 
     def factory(desk):
-        h = hh.HearthHost(desk, turns, is_attended=lambda c: attended(c))
+        h = hh.HearthHost(desk, turns, is_attended=lambda c: attended(c), **host)
         made.append(h)
         return h
 
@@ -84,6 +84,16 @@ async def serving(home, turns, until, *, attended=lambda c: False, timeout=25.0)
         stop.set()
         await asyncio.wait_for(task, 30)
     return made[0]
+
+
+def set_state(home, receipt, to):
+    d = Desk(home, seat="probe")
+    try:
+        for row in d.ledger._all("SELECT event_id, arrival FROM inbox"):
+            if json.loads(row["arrival"] or "{}").get("id") == receipt.id:
+                d.ledger.set_state(row["event_id"], to)
+    finally:
+        d.ledger.close()
 
 
 def state(home, receipt):
@@ -230,6 +240,35 @@ async def test_a_failed_turn_puts_the_alarm_back_and_a_later_wake_runs_it(home):
     # a restart: the seat's recovery wakes what is still arrived
     await serving(home, turns, lambda: len(turns.calls) >= 2 and state(home, receipt) == "taken_in")
     assert "ALARM-NOTE retry" in turns.calls[-1][1]
+
+
+async def test_a_failed_turn_is_tried_again_without_another_message_or_a_restart(home):
+    """docs/capabilities/WAKE.md: a turn that fails leaves it pending and is tried again."""
+    receipt = await session_alarm(home, "sess-A", "ALARM-NOTE transient", in_ms=500)
+    turns = Turns(rc=1)
+
+    def recovers():
+        if len(turns.calls) >= 2:
+            turns.rc = 0
+        return len(turns.calls) >= 3 and state(home, receipt) == "taken_in"
+
+    await serving(home, turns, recovers, retry_s=0.2)
+    assert all("ALARM-NOTE transient" in p for _, p in turns.calls)
+
+
+async def test_a_wake_left_mid_turn_by_a_stopped_host_runs_once_it_is_back(home):
+    """docs/capabilities/WAKE.md: a wake outlives a restart, even in the middle of its turn.
+    A host killed mid-turn leaves its arrivals shown, with nothing running."""
+    receipt = await session_alarm(home, "sess-A", "ALARM-NOTE killed", in_ms=500)
+    desk = Desk(home, seat="sess-A")
+    try:
+        await _pump_until(desk, lambda: state(home, receipt) == "arrived")
+    finally:
+        await desk.close()
+    set_state(home, receipt, "shown")
+    turns = Turns()
+    await serving(home, turns, lambda: turns.calls and state(home, receipt) == "taken_in")
+    assert "ALARM-NOTE killed" in turns.calls[0][1]
 
 
 # Host level, where the test controls who pumps: the cases a sweep or a lucky claim can hide.

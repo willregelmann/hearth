@@ -14,5 +14,6 @@ What the agent does with any of it is the agent's judgment. That it's shown is f
 - The live-turns view is shown beside the intentions, with what it can't prove: an empty list doesn't mean no other turn is running.
 - **A wake resumes the thread it's for, whether or not anyone has that conversation open.** A wake the agent set for itself comes back in the thread that set it, never in a fresh one.
 - A thread never has two turns writing to it at once. A wake for a thread that's mid-turn, or open in a live session, is taken up there or runs after it, never beside it.
-- What woke a turn counts as taken in only once that turn has finished. A turn that fails leaves it pending, and the next wake shows it again.
+- What woke a turn counts as taken in only once that turn has finished. A turn that fails leaves it pending and is tried again, without waiting for another message or a restart.
+- A wake outlives a restart. One still pending when Hearth stopped, even in the middle of its turn, runs once Hearth is back.
 - Wake reads; it never changes an intention or closes one on the agent's behalf.
