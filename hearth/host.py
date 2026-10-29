@@ -27,6 +27,8 @@ What holds:
     closes with the message still pending, the next sweep runs the turn.
   - start() returns None: a message to the default channel waits for adopt, as Front Desk
     already does for hosts that can't start a conversation.
+  - An offer is carried out whether or not a session is open: every seat this host attends,
+    its own included, holds the handlers from the identity's offers file.
 
 Seats. Front Desk binds each channel to the seat that listed it, and a Claude Code session's
 server uses its session id as its seat; a desk on any other seat leaves the message to that seat
@@ -53,7 +55,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
-from frontdesk import Desk, wire
+from frontdesk import Desk, offers, wire
 from frontdesk.hosts.claude_code import sessions
 
 logger = logging.getLogger("hearth.host")
@@ -220,13 +222,21 @@ class HearthHost:
 async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: float = SWEEP_S,
                 poll_ms: int = 5000, stop: Optional[asyncio.Event] = None) -> None:
     """Stay at the desk for every live conversation of the identity in ``home``: one Desk per
-    channel seat, sharing one host. A seat a live session has open is left to that session."""
+    channel seat, sharing one host. A seat a live session has open is left to that session.
+    The host's own seat is always attended, so a request reaches a desk that can carry it out
+    even when no conversation is listed."""
+    catalog = offers.load_catalog(home)
     main = Desk(home, seat="hearth")
     host = host_factory(main)
     main.host = host
     seats: dict[str, tuple[Desk, asyncio.Task]] = {}
     stop = stop or asyncio.Event()
     await host.recover()
+
+    async def attend(desk):
+        # Whichever seat claims a request carries it out, so every seat holds the offers' handlers.
+        await offers.attach(desk, catalog)
+        await desk.run(host, poll_ms=poll_ms)
 
     async def drop(seat):
         desk, task = seats.pop(seat)
@@ -237,7 +247,7 @@ async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: flo
     try:
         while not stop.is_set():
             want = {r["seat"] for r in main.ledger.live_channels() if r["seat"]}
-            want = {s for s in want if not host.is_attended(s)}
+            want = {s for s in want if not host.is_attended(s)} | {main.seat}
             for seat in list(seats):
                 if seat not in want or seats[seat][1].done():
                     task = seats[seat][1]
@@ -246,7 +256,7 @@ async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: flo
                     await drop(seat)
             for seat in want - set(seats):
                 desk = Desk(home, seat=seat)
-                seats[seat] = (desk, asyncio.get_running_loop().create_task(desk.run(host, poll_ms=poll_ms)))
+                seats[seat] = (desk, asyncio.get_running_loop().create_task(attend(desk)))
             await host.retry_deferred()
             await host.retry_failed()
             try:
