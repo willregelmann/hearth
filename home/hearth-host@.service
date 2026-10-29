@@ -13,6 +13,9 @@ Group=%i
 Environment=PATH=/usr/bin:/bin LANG=C.UTF-8
 ExecStart=/opt/hearth/venv/bin/python -I -m hearth.host
 WorkingDirectory=~
+# /run/hearth/<tenant>: the status socket (hearth.status), which refuses a directory others can enter
+RuntimeDirectory=hearth/%i
+RuntimeDirectoryMode=0700
 Restart=on-failure
 RestartSec=10
 # 78: no usable Front Desk home (frontdesk_home not GREEN). A person owes a step; don't loop.

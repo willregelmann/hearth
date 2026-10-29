@@ -30,6 +30,8 @@ def _parse(deps) -> dict[str, dict]:
             if "extra ==" in dep:
                 continue
             raise ValueError(f"unexpected marker on a dependency: {dep!r}")
+        if "git+" not in dep:   # a package-index library, held by its range; plugins come from git
+            continue
         m = _DEP.match(dep.strip())
         if not m:
             raise ValueError(f"not pinned to a 40-character commit: {dep!r}")
