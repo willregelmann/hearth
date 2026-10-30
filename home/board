@@ -9,6 +9,7 @@
 # sets at start, so agents already running pick the grant up when their host next restarts.
 # The page is served on /run/hearth-board/board.sock, which only hearth-operators can reach:
 # put the operator's proxy (the one that does the login) in that group. Never a tenant.
+# A polkit rule lets hearth-board restart an agent's host unit, and nothing else.
 set -euo pipefail
 
 DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
@@ -40,6 +41,14 @@ if [ -e "$DST" ] && ! cmp -s "$SRC" "$DST"; then
 fi
 if [ -e "$DST" ]; then echo "= $DST present"
 else run install -o root -g root -m 644 "$SRC" "$DST"; run systemctl daemon-reload; fi
+
+# 3. the polkit rule, root's: hearth-board may restart agents' host units, and nothing else.
+RSRC=$here/hearth-board.rules; RDST=/etc/polkit-1/rules.d/50-hearth-board.rules
+[ -d /etc/polkit-1/rules.d ] || die "no /etc/polkit-1/rules.d: install polkit, or the board can't restart an agent"
+if [ -e "$RDST" ] && ! cmp -s "$RSRC" "$RDST"; then die "$RDST exists and differs from $RSRC; replace it by hand"; fi
+if [ -e "$RDST" ]; then echo "= $RDST present"
+else run install -o root -g root -m 644 "$RSRC" "$RDST"; fi
+
 run systemctl enable --now hearth-board.service
 
 cat <<EOF

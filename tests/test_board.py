@@ -56,6 +56,7 @@ class Host:
 
     def board(self, **kw) -> hb.Board:
         kw.setdefault("unit_state", lambda name: "active")
+        kw.setdefault("restart", lambda name: None)
         return hb.Board(self.registry, self.run, timeout_s=1.0, **kw)
 
     def close(self):
@@ -78,11 +79,13 @@ class Served:
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
-    def request(self, method: str, path: str) -> tuple[int, bytes]:
+    def request(self, method: str, path: str, headers=None) -> tuple[int, bytes]:
         conn = http.client.HTTPConnection("board")
         conn.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         conn.sock.connect(str(self.sock))
-        conn.request(method, path)
+        body = b"{}" if method == "POST" else None
+        h = {"Content-Type": "application/json", "Sec-Fetch-Site": "same-origin"} if method == "POST" else {}
+        conn.request(method, path, body=body, headers={**h, **(headers or {})})
         r = conn.getresponse()
         body = r.read()
         conn.close()
@@ -201,3 +204,42 @@ def test_what_an_agent_reports_cant_change_what_the_board_shows_about_another(fl
     assert agents["bob"]["reachable"] is False, "alice's report was filed as bob's"
     assert "agent" not in agents["alice"]["status"]
     assert agents["alice"]["status"]["live_turns"][0]["thread"] == "<img src=x onerror=alert(1)>"
+
+
+def test_a_restart_restarts_one_declared_agent_and_never_stops_another(fleet, serve_board):
+    fleet.declare("alice", 2001)
+    fleet.declare("bob", 2002)
+    fleet.up("mallory", report())     # serving, but nobody declared it
+    restarted = []
+    board = fleet.board(restart=restarted.append)
+    board.read_all()
+    served = serve_board(board)
+    assert served.request("POST", "/api/agents/alice/restart")[0] == 200
+    for name in ("mallory", "alice%20bob", "*", "..", "hearth-host@bob.service"):
+        assert served.request("POST", f"/api/agents/{name}/restart")[0] == 404, name
+    assert restarted == ["alice"]
+    agents = {a["name"]: a for a in served.agents()["agents"]}
+    assert agents["alice"]["restarted"] and agents["bob"]["restarted"] is None
+
+
+def test_a_restart_that_fails_says_so(fleet, serve_board):
+    fleet.declare("alice", 2001)
+
+    def refused(name):
+        raise hb.RestartError("Access denied")
+    board = fleet.board(restart=refused)
+    board.read_all()
+    served = serve_board(board)
+    code, body = served.request("POST", "/api/agents/alice/restart")
+    assert code == 502 and b"Access denied" in body
+    assert served.agents()["agents"][0]["restarted"] is None, "a restart that failed isn't shown as done"
+
+
+def test_only_the_operator_can_restart_through_the_board(fleet, serve_board):
+    fleet.declare("alice", 2001)
+    restarted = []
+    served = serve_board(fleet.board(restart=restarted.append))
+    for headers in ({"Sec-Fetch-Site": "cross-site"}, {"Sec-Fetch-Site": "same-site"},
+                    {"Content-Type": "application/x-www-form-urlencoded"}):
+        assert served.request("POST", "/api/agents/alice/restart", headers)[0] == 403, headers
+    assert restarted == []

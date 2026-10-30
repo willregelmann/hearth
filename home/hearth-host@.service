@@ -15,12 +15,11 @@ ExecStart=/opt/hearth/venv/bin/python -I -m hearth.host
 WorkingDirectory=~
 # /run/hearth/<tenant>: the status socket (hearth.status), which refuses a directory others can enter.
 # The board's read grant is the directory's group (docs/decisions/0013), set by root ("+") outside
-# the home; without a board installed ("-") the group stays the tenant's own. setgid, so the socket
-# the tenant makes in it takes that group too: connecting needs write on the socket itself.
-RuntimeDirectory=hearth/%i
-RuntimeDirectoryMode=0750
-ExecStartPre=-+/bin/chgrp hearth-board /run/hearth/%i
-ExecStartPre=-+/bin/chmod g+s /run/hearth/%i
+# the home; without a board installed the group is the tenant's own. setgid, so the socket the
+# tenant makes in it takes that group too: connecting needs write on the socket itself. Not a
+# RuntimeDirectory=: systemd puts that back to the tenant's group each time it starts the host.
+ExecStartPre=+/bin/sh -c 'g=%i; getent group hearth-board >/dev/null && g=hearth-board; install -d -o %i -g "$$g" -m 2750 /run/hearth/%i'
+Environment=HEARTH_STATUS_SOCKET=/run/hearth/%i/status.sock
 Restart=on-failure
 RestartSec=10
 # 78: no usable Front Desk home (frontdesk_home not GREEN). A person owes a step; don't loop.

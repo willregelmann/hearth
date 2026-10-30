@@ -24,6 +24,9 @@ message Report {
   // Each report this process can't give, and why. Absent from here means given above, so a
   // reader never takes an empty list it wasn't given for "none".
   repeated NotReported not_reported = 6;
+  // When this process started, and whether it's a restart the agent hasn't yet been shown.
+  double started = 7;
+  bool restart_not_yet_shown = 8;
 }
 
 message LiveTurn {

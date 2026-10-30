@@ -9,9 +9,13 @@ What holds:
   - The board shows its own freshness: every reply says when the last full read finished, how
     many of the declared agents it read, and whether that is stale by the board's own clock. A
     page that stops hearing from the board says so too.
-  - It reads status and never writes it: status is read-only (hearth.status). The one thing it
-    sends is the operator's message to an agent, on the desk (hearth.talk). Anything else but GET
-    is refused.
+  - It reads status and never writes it: status is read-only (hearth.status). What it does is
+    send the operator's message to an agent, on the desk (hearth.talk), and restart one agent's
+    host. Anything else but GET is refused.
+  - A restart names one declared agent's host unit and nothing else, and needs no privilege of
+    the board's own: systemd asks polkit, whose rule (home/hearth-board.rules) lets the board's
+    user restart agents' host units and do nothing else to any unit. The agent is shown the
+    restart at its next wake by its own host (hearth.host).
   - It runs as neither root nor any agent, and refuses to start as either.
   - Only the operator reaches it: it refuses a socket directory every user can enter. The
     operator's proxy is granted the directory's group. Nothing another site's page sends through
@@ -57,6 +61,10 @@ class Refused(Exception):
     pass
 
 
+class RestartError(Exception):
+    pass
+
+
 def unit_state(agent: str) -> str:
     """systemd's ActiveState for the agent's host, or "unknown" when systemd can't say."""
     try:
@@ -67,11 +75,24 @@ def unit_state(agent: str) -> str:
         return "unknown"
 
 
+def systemctl_restart(agent: str) -> None:
+    """Ask systemd to restart the agent's host, without waiting for it to come back up."""
+    try:
+        out = subprocess.run(["systemctl", "--no-ask-password", "--no-block", "restart", f"hearth-host@{agent}.service"],
+                             capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RestartError(f"systemctl couldn't be run: {exc}") from exc
+    if out.returncode != 0:
+        raise RestartError(out.stderr.strip() or f"systemctl exited {out.returncode}")
+
+
 class Board:
     def __init__(self, registry: Path = REGISTRY, run: Path = RUN, *,
                  unit_state: Callable[[str], str] = unit_state, interval_s: float = INTERVAL_S,
-                 timeout_s: float = 2.0, clock: Callable[[], float] = time.time):
+                 timeout_s: float = 2.0, clock: Callable[[], float] = time.time,
+                 restart: Callable[[str], None] = systemctl_restart):
         self.registry, self.run, self.unit_state = Path(registry), Path(run), unit_state
+        self._restart, self.restarts = restart, {}   # agent: when the board last restarted its host
         self.interval_s, self.timeout_s, self.clock = interval_s, timeout_s, clock
         self._snapshot = {"checked_at": None, "declared": 0, "read": 0, "agents": []}
         self._changed = threading.Condition()
@@ -124,6 +145,14 @@ class Board:
     def names(self) -> list[str]:
         return [name for name, _, _ in self.declared()]
 
+    def restart(self, name: str) -> None:
+        """Restart one declared agent's host. Raises KeyError for any other name."""
+        if name not in self.names():
+            raise KeyError(name)
+        self._restart(name)
+        self.restarts[name] = self.clock()
+        logger.info("restarted %s's host", name)
+
     def snapshot(self) -> dict:
         with self._changed:
             snap = dict(self._snapshot)
@@ -131,6 +160,7 @@ class Board:
         snap["age_s"] = None if snap["checked_at"] is None else round(now - snap["checked_at"], 1)
         snap["stale"] = snap["age_s"] is None or snap["age_s"] > STALE_AFTER * self.interval_s
         snap["interval_s"], snap["watch"] = self.interval_s, WATCH
+        snap["agents"] = [{**a, "restarted": self.restarts.get(a["name"])} for a in snap["agents"]]
         return snap
 
     def wait(self, timeout: float) -> None:
@@ -196,7 +226,7 @@ def handler(board: Board, talk: Optional[talking.Talk] = None):
 
         def do_POST(self):
             name, what = _route(self.path)
-            if not (name and what in ("talk", "read") and talk is not None):
+            if not (name and (what == "restart" or what in ("talk", "read") and talk is not None)):
                 return self._refuse()
             # Another site's page can make the operator's browser POST here, with the proxy's login
             # attached. A browser marks it cross-site, and can't send it as JSON without asking first,
@@ -213,10 +243,21 @@ def handler(board: Board, talk: Optional[talking.Talk] = None):
                 return self._json(400, {"error": "not JSON"})
             if not isinstance(body, dict):
                 return self._json(400, {"error": "not a JSON object"})
-            if what == "talk":
+            if what == "restart":
+                self._restart(name)
+            elif what == "talk":
                 self._talk(lambda: {"sent": talk.say(name, body.get("text"))})
             else:
                 self._talk(lambda: talk.read(name, body.get("up_to")) or {"read": True})
+
+        def _restart(self, name: str) -> None:
+            try:
+                board.restart(name)
+            except KeyError:
+                return self._json(404, {"error": f"{name!r} isn't a declared agent"})
+            except RestartError as exc:
+                return self._json(502, {"error": f"not restarted: {exc}"})
+            self._json(200, {"restarted": name})
 
         def _talk(self, act) -> None:
             try:
@@ -240,7 +281,7 @@ def handler(board: Board, talk: Optional[talking.Talk] = None):
 
         def _refuse(self):
             self.send_response(405)
-            self.send_header("Allow", "GET" if talk is None else "GET, POST")
+            self.send_header("Allow", "GET, POST")
             self.send_header("Content-Length", "0")
             self.end_headers()
 

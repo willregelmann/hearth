@@ -34,7 +34,7 @@
   button { font: inherit; font-size: 13px; color: var(--fg); background: var(--card); border: 1px solid var(--line);
            border-radius: 6px; padding: 2px 10px; cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
-  .head button { margin-left: auto; }
+  .head .actions { margin-left: auto; display: flex; gap: 6px; }
   #talk { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 0 0 16px; }
   #talk[hidden] { display: none; }
   #talk .head { margin-bottom: 8px; }
@@ -75,6 +75,14 @@ const when = s => s ? new Date(s * 1000).toLocaleString() : "never";
 let last = 0, interval = 5, talkReady = false;
 
 function row(dl, k, v) { dl.append($("dt", "", k), $("dd", "", v)); }
+function button(text, act) { const b = $("button", "", text); b.type = "button"; b.addEventListener("click", act); return b; }
+
+// Restart: one agent's host, nothing else. The agent is told at its next turn.
+async function restart(name) {
+  if (!confirm(`Restart ${name}'s host? A turn running now is cut off; what it was shown comes back to ${name}.`)) return;
+  try { await call(`api/agents/${encodeURIComponent(name)}/restart`, {}); }
+  catch (e) { alert(`${name} wasn't restarted: ${e.message}`); }
+}
 
 function render(snap) {
   last = Date.now(); interval = snap.interval_s || interval;
@@ -92,14 +100,16 @@ function render(snap) {
     head.append($("span", "name", a.name),
                 $("span", "pill " + (a.host === "active" ? "ok" : "bad"), "host " + a.host),
                 $("span", "pill " + (a.reachable ? "ok" : "bad"), a.reachable ? "status read" : "unreachable"));
-    if (talkReady) {
-      const b = $("button", "", "Talk"); b.type = "button"; b.addEventListener("click", () => openTalk(a.name));
-      head.append(b);
-    }
+    const actions = $("span", "actions");
+    if (talkReady) actions.append(button("Talk", () => openTalk(a.name)));
+    actions.append(button("Restart", () => restart(a.name)));
+    head.append(actions);
     card.append(head);
     const dl = $("dl");
+    if (a.restarted) row(dl, "Restarted", `from the board at ${when(a.restarted)}`);
     if (!a.reachable) { row(dl, "Why", a.unreachable); card.append(dl); return card; }
     const s = a.status;
+    row(dl, "Host started", when(s.started) + (s.restart_not_yet_shown ? ", a restart the agent hasn't been shown yet" : ""));
     row(dl, "Live turns", s.live_turns.length ? s.live_turns.map(t => `${t.thread} since ${when(t.started)}`).join("; ") : "none");
     row(dl, "Waiting", s.pending_wakes.length ? s.pending_wakes.map(w =>
       `${w.thread}: ${w.waiting} waiting` + (w.open_elsewhere ? ", open in a session" : "") +

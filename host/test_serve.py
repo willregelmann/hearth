@@ -67,7 +67,7 @@ async def session_alarm(home, session, text, in_ms=1500, due_at=None):
         await desk.close()
 
 
-async def serving(home, turns, until, *, attended=lambda c: False, timeout=25.0, **host):
+async def serving(home, turns, until, *, attended=lambda c: False, timeout=25.0, starts=None, **host):
     stop = asyncio.Event()
     made = []
 
@@ -76,7 +76,7 @@ async def serving(home, turns, until, *, attended=lambda c: False, timeout=25.0,
         made.append(h)
         return h
 
-    task = asyncio.create_task(hh.serve(home, factory, sweep_s=0.3, poll_ms=500, stop=stop))
+    task = asyncio.create_task(hh.serve(home, factory, sweep_s=0.3, poll_ms=500, stop=stop, starts=starts))
     end = time.monotonic() + timeout
     try:
         while not until():
@@ -546,3 +546,30 @@ def test_not_attended_by_this_host_s_own_turn(tmp_path, versions):
 def test_the_default_dirs_are_the_tenant_s_versions_and_root_s_store():
     home = pwd.getpwuid(os.getuid()).pw_dir
     assert hh.claude_dirs() == (os.path.realpath(f"{home}/.local/share/claude/versions"), "/opt/hearth/claude")
+
+
+async def test_a_restart_is_shown_at_the_agent_s_next_wake(home, tmp_path):
+    """docs/interfaces/BOARD.md: a restart is shown to the agent at its next wake, until a turn
+    shown it finishes. A first start is no restart."""
+    starts = tmp_path / "host-started.json"
+    first = await session_alarm(home, "sess-A", "ALARM-NOTE first", in_ms=500)
+    turns = Turns()
+    await serving(home, turns, lambda: state(home, first) == "taken_in", starts=starts)
+    assert "restarted" not in turns.calls[0][1]
+
+    shown = await session_alarm(home, "sess-A", "ALARM-NOTE after the restart", in_ms=500)
+    later = await session_alarm(home, "sess-B", "ALARM-NOTE later", in_ms=6000)
+    turns = Turns(rc=1)
+
+    def through():
+        if len(turns.calls) >= 1:
+            turns.rc = 0
+        return state(home, later) == "taken_in"
+
+    host = await serving(home, turns, through, starts=starts, retry_s=0.2)
+    prompts = [p for _, p in turns.calls]
+    after = [p for p in prompts if "ALARM-NOTE after the restart" in p]
+    assert len(after) >= 2 and all("Your Hearth host restarted" in p for p in after), \
+        "shown at the next wake, and again when that turn failed"
+    assert "Your Hearth host restarted" not in [p for p in prompts if "ALARM-NOTE later" in p][0]
+    assert host.restarted is None

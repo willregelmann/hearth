@@ -31,6 +31,10 @@ What holds:
     its own included, holds the handlers from the identity's offers file.
   - The agent's status is served beside its turns (hearth.status), and only read: a host whose
     status can't be served runs the same without it.
+  - A restart is shown to the agent at its next wake (docs/interfaces/BOARD.md): every start
+    after the first is noted in the next turn this host runs, and stays noted until a turn
+    shown it finishes ok. A turn in a session open elsewhere isn't this host's to prompt, so the
+    notice waits for the next turn Hearth runs.
 
 Seats. Front Desk binds each channel to the seat that listed it, and a Claude Code session's
 server uses its session id as its seat; a desk on any other seat leaves the message to that seat
@@ -70,6 +74,9 @@ RETRY_S, RETRY_MAX_S = 30.0, 1800.0
 RESUMED = ("Hearth started this turn because a message came for this conversation while nobody had it "
            "open. Your reply text isn't delivered to anyone: whatever someone should see, send it through "
            "the Front Desk.")
+RESTARTED = ("Your Hearth host restarted at {at}; it had been running since {before}. The operator can "
+             "restart it from the board, and it also restarts after a failure or a reboot. Anything a turn "
+             "was shown and didn't finish is still pending and comes back to you.")
 
 
 def turn_runner(conversation: str, prompt: str, *, turn: str = TURN, timeout: int = 1800) -> int:
@@ -157,6 +164,31 @@ class HearthHost:
         self.deferred: set[str] = set()
         self.failed: dict[str, tuple[int, float]] = {}   # conversation: (failures in a row, when to try again)
         self.live: dict[str, float] = {}   # conversation: when its running turn started (wall clock)
+        self.started = time.time()
+        self.restarted: Optional[str] = None   # the notice of this start, until a turn has shown it
+
+    def note_start(self, record: Path) -> None:
+        """Record this start beside the last one. A start after an earlier one is a restart, and
+        the agent is told at its next turn. A record that can't be kept is logged, and the next
+        start counts as a first one."""
+        try:
+            before = json.loads(record.read_text())["started"]
+        except FileNotFoundError:
+            before = None
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            logger.error("the record of the host's last start couldn't be read (%s); this start isn't "
+                         "shown as a restart", exc)
+            before = None
+        if before is not None:
+            stamp = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+            self.restarted = RESTARTED.format(at=stamp(self.started), before=stamp(before))
+        try:
+            record.parent.mkdir(parents=True, exist_ok=True)
+            tmp = record.with_name(record.name + ".tmp")
+            tmp.write_text(json.dumps({"started": self.started}))
+            os.replace(tmp, record)
+        except OSError as exc:
+            logger.error("the host's start couldn't be recorded: %s", exc)
 
     async def wake(self, conversation: str) -> None:
         task = asyncio.get_running_loop().create_task(self._turn(conversation))
@@ -206,7 +238,8 @@ class HearthHost:
                     return
                 refs = [a.ref for a in arrivals]
                 self.desk.mark_shown(refs)
-                prompt = "\n\n".join([RESUMED] + [wire.render(a) for a in arrivals])
+                notice = self.restarted
+                prompt = "\n\n".join([RESUMED] + ([notice] if notice else []) + [wire.render(a) for a in arrivals])
                 self.live[conversation] = time.time()
                 try:
                     rc = await asyncio.to_thread(self.runner, conversation, prompt)
@@ -228,26 +261,36 @@ class HearthHost:
                     return
                 await self.desk.commit(conversation, also=refs)
                 self.failed.pop(conversation, None)
+                if notice is not None and self.restarted == notice:
+                    self.restarted = None
 
 
 def turn_ledger() -> Path:
     return Path(pwd.getpwuid(os.getuid()).pw_dir) / ".hearth" / "ledger.jsonl"
 
 
+def start_record() -> Path:
+    return Path(pwd.getpwuid(os.getuid()).pw_dir) / ".hearth" / "host-started.json"
+
+
 async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: float = SWEEP_S,
                 poll_ms: int = 5000, stop: Optional[asyncio.Event] = None,
-                status_path: Optional[Path] = None, ledger: Optional[Path] = None) -> None:
+                status_path: Optional[Path] = None, ledger: Optional[Path] = None,
+                starts: Optional[Path] = None) -> None:
     """Stay at the desk for every live conversation of the identity in ``home``: one Desk per
     channel seat, sharing one host. A seat a live session has open is left to that session.
     The host's own seat is always attended, so a request reaches a desk that can carry it out
     even when no conversation is listed.
 
     With ``status_path``, the agent's status is served there (hearth.status). A status that
-    can't be served is logged and the host carries on: the agent runs the same either way."""
+    can't be served is logged and the host carries on: the agent runs the same either way.
+    With ``starts``, this start is recorded there, and a restart is shown at the next turn."""
     catalog = offers.load_catalog(home)
     main = Desk(home, seat="hearth")
     host = host_factory(main)
     main.host = host
+    if starts is not None:
+        host.note_start(starts)
     seats: dict[str, tuple[Desk, asyncio.Task]] = {}
     stop = stop or asyncio.Event()
     reporting = None
@@ -306,12 +349,12 @@ def main() -> int:
     if rc != tenantcheck.GREEN:
         print(f"hearth.host: {msg}", file=sys.stderr)
         return 78   # EX_CONFIG: systemd doesn't restart-loop on it (RestartPreventExitStatus)
-    # systemd's RuntimeDirectory= (hearth-host@.service): made for this tenant only, gone when it stops
-    runtime = os.environ.get("RUNTIME_DIRECTORY")
-    if runtime is None:
-        logger.error("no RUNTIME_DIRECTORY; status not served")
+    # made by root for this tenant (hearth-host@.service), with the board's group when there is one
+    sock = os.environ.get("HEARTH_STATUS_SOCKET")
+    if sock is None:
+        logger.error("no HEARTH_STATUS_SOCKET; status not served")
     asyncio.run(serve(tenantcheck.frontdesk_home_path(t),
-                      status_path=Path(runtime) / "status.sock" if runtime else None))
+                      status_path=Path(sock) if sock else None, starts=start_record()))
     return 0
 
 
