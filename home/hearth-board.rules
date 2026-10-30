@@ -1,0 +1,11 @@
+// /etc/polkit-1/rules.d/50-hearth-board.rules, installed by home/board (docs/decisions/0013).
+// The board's user may restart one agent's host unit, and do nothing else to any unit. A restart
+// of one agent names that agent's unit only, so it never stops another.
+polkit.addRule(function (action, subject) {
+  if (action.id == "org.freedesktop.systemd1.manage-units" &&
+      subject.user == "hearth-board" &&
+      action.lookup("verb") == "restart" &&
+      /^hearth-host@[a-z0-9_-]+\.service$/.test(action.lookup("unit") || "")) {
+    return polkit.Result.YES;
+  }
+});

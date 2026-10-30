@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13hearth/status.proto\x12\x10hearth.status.v1\"\x0c\n\nGetRequest\"\xf5\x01\n\x06Report\x12\r\n\x05\x61gent\x18\x01 \x01(\t\x12\r\n\x05\x61s_of\x18\x02 \x01(\x01\x12.\n\nlive_turns\x18\x03 \x03(\x0b\x32\x1a.hearth.status.v1.LiveTurn\x12\x34\n\rpending_wakes\x18\x04 \x03(\x0b\x32\x1d.hearth.status.v1.PendingWake\x12\x32\n\x0crecent_turns\x18\x05 \x03(\x0b\x32\x1c.hearth.status.v1.RecentTurn\x12\x33\n\x0cnot_reported\x18\x06 \x03(\x0b\x32\x1d.hearth.status.v1.NotReported\"+\n\x08LiveTurn\x12\x0e\n\x06thread\x18\x01 \x01(\t\x12\x0f\n\x07started\x18\x02 \x01(\x01\"j\n\x0bPendingWake\x12\x0e\n\x06thread\x18\x01 \x01(\t\x12\x0f\n\x07waiting\x18\x02 \x01(\x05\x12\x16\n\x0eopen_elsewhere\x18\x03 \x01(\x08\x12\x10\n\x08\x66\x61ilures\x18\x04 \x01(\x05\x12\x10\n\x08retry_at\x18\x05 \x01(\x01\"h\n\nRecentTurn\x12\x0e\n\x06thread\x18\x01 \x01(\t\x12\x0f\n\x07trigger\x18\x02 \x01(\t\x12\x0f\n\x07started\x18\x03 \x01(\x01\x12\r\n\x05\x65nded\x18\x04 \x01(\x01\x12\n\n\x02ok\x18\x05 \x01(\x08\x12\r\n\x05\x65rror\x18\x06 \x01(\t\"-\n\x0bNotReported\x12\x0e\n\x06report\x18\x01 \x01(\t\x12\x0e\n\x06reason\x18\x02 \x01(\t2G\n\x06Status\x12=\n\x03Get\x12\x1c.hearth.status.v1.GetRequest\x1a\x18.hearth.status.v1.Reportb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x13hearth/status.proto\x12\x10hearth.status.v1\"\x0c\n\nGetRequest\"\xa5\x02\n\x06Report\x12\r\n\x05\x61gent\x18\x01 \x01(\t\x12\r\n\x05\x61s_of\x18\x02 \x01(\x01\x12.\n\nlive_turns\x18\x03 \x03(\x0b\x32\x1a.hearth.status.v1.LiveTurn\x12\x34\n\rpending_wakes\x18\x04 \x03(\x0b\x32\x1d.hearth.status.v1.PendingWake\x12\x32\n\x0crecent_turns\x18\x05 \x03(\x0b\x32\x1c.hearth.status.v1.RecentTurn\x12\x33\n\x0cnot_reported\x18\x06 \x03(\x0b\x32\x1d.hearth.status.v1.NotReported\x12\x0f\n\x07started\x18\x07 \x01(\x01\x12\x1d\n\x15restart_not_yet_shown\x18\x08 \x01(\x08\"+\n\x08LiveTurn\x12\x0e\n\x06thread\x18\x01 \x01(\t\x12\x0f\n\x07started\x18\x02 \x01(\x01\"j\n\x0bPendingWake\x12\x0e\n\x06thread\x18\x01 \x01(\t\x12\x0f\n\x07waiting\x18\x02 \x01(\x05\x12\x16\n\x0eopen_elsewhere\x18\x03 \x01(\x08\x12\x10\n\x08\x66\x61ilures\x18\x04 \x01(\x05\x12\x10\n\x08retry_at\x18\x05 \x01(\x01\"h\n\nRecentTurn\x12\x0e\n\x06thread\x18\x01 \x01(\t\x12\x0f\n\x07trigger\x18\x02 \x01(\t\x12\x0f\n\x07started\x18\x03 \x01(\x01\x12\r\n\x05\x65nded\x18\x04 \x01(\x01\x12\n\n\x02ok\x18\x05 \x01(\x08\x12\r\n\x05\x65rror\x18\x06 \x01(\t\"-\n\x0bNotReported\x12\x0e\n\x06report\x18\x01 \x01(\t\x12\x0e\n\x06reason\x18\x02 \x01(\t2G\n\x06Status\x12=\n\x03Get\x12\x1c.hearth.status.v1.GetRequest\x1a\x18.hearth.status.v1.Reportb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,15 +34,15 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_GETREQUEST']._serialized_start=41
   _globals['_GETREQUEST']._serialized_end=53
   _globals['_REPORT']._serialized_start=56
-  _globals['_REPORT']._serialized_end=301
-  _globals['_LIVETURN']._serialized_start=303
-  _globals['_LIVETURN']._serialized_end=346
-  _globals['_PENDINGWAKE']._serialized_start=348
-  _globals['_PENDINGWAKE']._serialized_end=454
-  _globals['_RECENTTURN']._serialized_start=456
-  _globals['_RECENTTURN']._serialized_end=560
-  _globals['_NOTREPORTED']._serialized_start=562
-  _globals['_NOTREPORTED']._serialized_end=607
-  _globals['_STATUS']._serialized_start=609
-  _globals['_STATUS']._serialized_end=680
+  _globals['_REPORT']._serialized_end=349
+  _globals['_LIVETURN']._serialized_start=351
+  _globals['_LIVETURN']._serialized_end=394
+  _globals['_PENDINGWAKE']._serialized_start=396
+  _globals['_PENDINGWAKE']._serialized_end=502
+  _globals['_RECENTTURN']._serialized_start=504
+  _globals['_RECENTTURN']._serialized_end=608
+  _globals['_NOTREPORTED']._serialized_start=610
+  _globals['_NOTREPORTED']._serialized_end=655
+  _globals['_STATUS']._serialized_start=657
+  _globals['_STATUS']._serialized_end=728
 # @@protoc_insertion_point(module_scope)

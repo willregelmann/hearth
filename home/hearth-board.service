@@ -8,13 +8,14 @@ After=network-online.target
 
 [Service]
 User=hearth-board
-Group=hearth-board
+# The page's socket takes the board's primary group, which the operator's proxy is in; the agents'
+# status directories are granted to hearth-board, a supplementary group here. (A setgid
+# RuntimeDirectory doesn't hold: systemd puts its group and mode back each time it starts this.)
+Group=hearth-operators
+SupplementaryGroups=hearth-board
 Environment=PATH=/usr/bin:/bin LANG=C.UTF-8
 RuntimeDirectory=hearth-board
 RuntimeDirectoryMode=0750
-# setgid, so the socket takes hearth-operators too: the proxy needs write on the socket itself
-ExecStartPre=+/bin/chgrp hearth-operators /run/hearth-board
-ExecStartPre=+/bin/chmod g+s /run/hearth-board
 # The operator's sign-in for Talk (hearth.talk): a token only this user can read, never the password.
 StateDirectory=hearth-board
 StateDirectoryMode=0700

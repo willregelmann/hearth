@@ -53,7 +53,8 @@ class Reporter(rpc.StatusServicer):
         return self.report()
 
     def report(self) -> pb.Report:
-        r = pb.Report(agent=self.agent, as_of=time.time())
+        r = pb.Report(agent=self.agent, as_of=time.time(), started=self.host.started,
+                      restart_not_yet_shown=self.host.restarted is not None)
         for thread, started in sorted(self.host.live.items()):
             r.live_turns.add(thread=thread, started=started)
         self._pending(r)

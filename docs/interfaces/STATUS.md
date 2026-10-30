@@ -6,6 +6,7 @@ What each agent's running process reports about itself to something outside it: 
 
 | Report | What it shows |
 |---|---|
+| Started | When the agent's process last started, and whether the agent has been shown that restart yet |
 | Live turns | Which of the agent's turns are running, and which [thread](../primitives/THREAD.md) each is in |
 | Faculties | Which declared faculties are present, and which are absent |
 | Pending wakes | [Wakes](../capabilities/WAKE.md) waiting to run, with any that failed and when each is tried again |
