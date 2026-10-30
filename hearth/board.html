@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth Board</title>
+<style>
+  :root {
+    --bg: #faf8f5; --fg: #1f1d1a; --muted: #6b665e; --line: #e4dfd7; --card: #ffffff;
+    --ok: #2f6f3e; --warn: #9a5b00; --bad: #a3271c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #171614; --fg: #ece8e1; --muted: #a39d93; --line: #2e2b27; --card: #1f1d1a;
+            --ok: #7cc48e; --warn: #e0a65a; --bad: #ef7f73; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  #fresh { color: var(--muted); margin: 0 0 16px; }
+  #fresh.stale { color: var(--bad); font-weight: 600; }
+  .note { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .agents { display: grid; gap: 12px; }
+  .agent { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  .name { font-weight: 600; font-size: 16px; }
+  .pill { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 10px 0 0; font-size: 14px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  button { font: inherit; font-size: 13px; color: var(--fg); background: var(--card); border: 1px solid var(--line);
+           border-radius: 6px; padding: 2px 10px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .head button { margin-left: auto; }
+  #talk { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 0 0 16px; }
+  #talk[hidden] { display: none; }
+  #talk .head { margin-bottom: 8px; }
+  #thread { max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+  .msg { max-width: 85%; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--line); }
+  .msg.me { align-self: flex-end; background: var(--bg); }
+  .msg .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg .meta { color: var(--muted); font-size: 12px; }
+  #talk form { display: flex; gap: 8px; margin-top: 10px; }
+  #talk textarea { flex: 1; min-height: 3em; font: inherit; color: var(--fg); background: var(--bg);
+                   border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; resize: vertical; }
+  #talk-error { color: var(--bad); font-size: 13px; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hearth Board</h1>
+  <p id="fresh">Waiting for the first read…</p>
+  <p class="note" id="watch"></p>
+  <p class="note" id="talk-ready"></p>
+  <section id="talk" hidden>
+    <div class="head"><span class="name" id="talk-name"></span><button type="button" id="talk-close">Close</button></div>
+    <div id="thread"></div>
+    <form id="talk-form">
+      <textarea id="talk-text" placeholder="Message (Ctrl+Enter sends)"></textarea>
+      <button type="submit" id="talk-send">Send</button>
+    </form>
+    <p id="talk-error"></p>
+  </section>
+  <div class="agents" id="agents"></div>
+</main>
+<script>
+// Every value from an agent is written with textContent, never as markup: an agent's report and
+// what it says in a thread are its own words, and can't add anything to the page.
+const $ = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = String(text); return e; };
+const when = s => s ? new Date(s * 1000).toLocaleString() : "never";
+let last = 0, interval = 5, talkReady = false;
+
+function row(dl, k, v) { dl.append($("dt", "", k), $("dd", "", v)); }
+
+function render(snap) {
+  last = Date.now(); interval = snap.interval_s || interval;
+  const fresh = document.getElementById("fresh");
+  fresh.className = snap.stale ? "stale" : "";
+  fresh.textContent = snap.checked_at === null
+    ? "Stale: the board hasn't finished a read yet."
+    : `${snap.stale ? "Stale: " : ""}last full read ${snap.age_s}s ago, ${snap.read} of ${snap.declared} declared agents read.`;
+  document.getElementById("watch").textContent = snap.watch.built ? "" : `Watch isn't running: ${snap.watch.reason}.`;
+  talkReady = snap.talk.ready;
+  document.getElementById("talk-ready").textContent = talkReady ? "" : `Talk isn't set up: ${snap.talk.reason}.`;
+  const list = document.getElementById("agents");
+  list.replaceChildren(...snap.agents.map(a => {
+    const card = $("section", "agent"), head = $("div", "head");
+    head.append($("span", "name", a.name),
+                $("span", "pill " + (a.host === "active" ? "ok" : "bad"), "host " + a.host),
+                $("span", "pill " + (a.reachable ? "ok" : "bad"), a.reachable ? "status read" : "unreachable"));
+    if (talkReady) {
+      const b = $("button", "", "Talk"); b.type = "button"; b.addEventListener("click", () => openTalk(a.name));
+      head.append(b);
+    }
+    card.append(head);
+    const dl = $("dl");
+    if (!a.reachable) { row(dl, "Why", a.unreachable); card.append(dl); return card; }
+    const s = a.status;
+    row(dl, "Live turns", s.live_turns.length ? s.live_turns.map(t => `${t.thread} since ${when(t.started)}`).join("; ") : "none");
+    row(dl, "Waiting", s.pending_wakes.length ? s.pending_wakes.map(w =>
+      `${w.thread}: ${w.waiting} waiting` + (w.open_elsewhere ? ", open in a session" : "") +
+      (w.failures ? `, ${w.failures} failed, next try ${w.retry_at ? when(w.retry_at) : "now"}` : "")).join("; ") : "none");
+    const t = s.recent_turns[s.recent_turns.length - 1];
+    row(dl, "Last turn", t ? `${t.ok ? "ok" : "failed"} at ${when(t.ended)} (${t.trigger}${t.error ? ": " + t.error : ""})` : "none yet");
+    for (const n of s.not_reported) row(dl, "Not reported", `${n.report}: ${n.reason}`);
+    row(dl, "Reported at", when(s.as_of));
+    card.append(dl);
+    return card;
+  }));
+}
+
+// Talk: the operator's thread with one agent, on the desk. What the board sends is a message
+// from the operator, the same as from any chat client.
+let talking = null, talkTimer = null, lastRead = null;
+const thread = name => `api/agents/${encodeURIComponent(name)}/`;
+
+async function call(path, body) {
+  const r = await fetch(path, body === undefined ? {} :
+    {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `the board answered ${r.status}`);
+  return j;
+}
+const talkError = text => { document.getElementById("talk-error").textContent = text; };
+
+function openTalk(name) {
+  talking = name; lastRead = null;
+  document.getElementById("talk").hidden = false;
+  document.getElementById("talk-name").textContent = `Talking to ${name}`;
+  document.getElementById("thread").replaceChildren();
+  talkError("");
+  clearInterval(talkTimer); talkTimer = setInterval(loadThread, 3000); loadThread();
+  document.getElementById("talk-text").focus();
+}
+
+function closeTalk() {
+  talking = null; clearInterval(talkTimer);
+  document.getElementById("talk").hidden = true;
+}
+
+async function loadThread() {
+  const name = talking;
+  if (!name) return;
+  try {
+    const j = await call(thread(name) + "thread");
+    if (name === talking) { renderThread(name, j.messages); talkError(""); }
+  } catch (e) { if (name === talking) talkError(e.message); }
+}
+
+function renderThread(name, messages) {
+  const list = document.getElementById("thread");
+  const atEnd = list.scrollTop + list.clientHeight >= list.scrollHeight - 8;
+  list.replaceChildren(...messages.map(m => {
+    const d = $("div", "msg " + (m.from === "operator" ? "me" : "them"));
+    const who = m.from === "operator" ? "you" : m.from === "agent" ? name : m.from;
+    d.append($("div", "text", m.text),
+             $("div", "meta", [who, new Date(m.at * 1000).toLocaleString(),
+                               m.kind !== "message" ? m.kind : "", m.state ? m.state.replace("_", " ") : ""]
+                               .filter(Boolean).join(" · ")));
+    return d;
+  }));
+  if (atEnd) list.scrollTop = list.scrollHeight;
+  // For a person, taken in means read: only what this page has shown while it's in view.
+  const theirs = messages.filter(m => m.from !== "operator").pop();
+  if (theirs && theirs.id !== lastRead && document.visibilityState === "visible") {
+    lastRead = theirs.id;
+    call(thread(name) + "read", {up_to: theirs.id}).catch(() => { lastRead = null; });
+  }
+}
+
+document.getElementById("talk-close").addEventListener("click", closeTalk);
+document.getElementById("talk-text").addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); document.getElementById("talk-form").requestSubmit(); }
+});
+document.getElementById("talk-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const box = document.getElementById("talk-text"), send = document.getElementById("talk-send");
+  const text = box.value;
+  if (!talking || !text.trim()) return;
+  send.disabled = true;
+  try { await call(thread(talking) + "talk", {text}); box.value = ""; talkError(""); loadThread(); }
+  catch (err) { talkError(`Not sent: ${err.message}`); }
+  finally { send.disabled = false; }
+});
+
+function connect() {
+  const es = new EventSource("api/events");
+  es.onmessage = e => render(JSON.parse(e.data));
+  es.onerror = () => { es.close(); setTimeout(connect, 3000); };
+}
+// A board that stops answering reads as stale, never as all clear.
+setInterval(() => {
+  if (last && Date.now() - last > 3000 * interval) {
+    const f = document.getElementById("fresh");
+    f.className = "stale"; f.textContent = `Stale: nothing heard from the board since ${new Date(last).toLocaleTimeString()}.`;
+  }
+}, 1000);
+connect();
+</script>
+</body>
+</html>

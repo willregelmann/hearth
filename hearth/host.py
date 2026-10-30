@@ -29,6 +29,8 @@ What holds:
     already does for hosts that can't start a conversation.
   - An offer is carried out whether or not a session is open: every seat this host attends,
     its own included, holds the handlers from the identity's offers file.
+  - The agent's status is served beside its turns (hearth.status), and only read: a host whose
+    status can't be served runs the same without it.
 
 Seats. Front Desk binds each channel to the seat that listed it, and a Claude Code session's
 server uses its session id as its seat; a desk on any other seat leaves the message to that seat
@@ -57,6 +59,7 @@ from typing import Callable, Optional
 
 from frontdesk import Desk, offers, wire
 from frontdesk.hosts.claude_code import sessions
+from hearth import status
 
 logger = logging.getLogger("hearth.host")
 
@@ -153,6 +156,7 @@ class HearthHost:
         self._tasks: set[asyncio.Task] = set()
         self.deferred: set[str] = set()
         self.failed: dict[str, tuple[int, float]] = {}   # conversation: (failures in a row, when to try again)
+        self.live: dict[str, float] = {}   # conversation: when its running turn started (wall clock)
 
     async def wake(self, conversation: str) -> None:
         task = asyncio.get_running_loop().create_task(self._turn(conversation))
@@ -203,11 +207,14 @@ class HearthHost:
                 refs = [a.ref for a in arrivals]
                 self.desk.mark_shown(refs)
                 prompt = "\n\n".join([RESUMED] + [wire.render(a) for a in arrivals])
+                self.live[conversation] = time.time()
                 try:
                     rc = await asyncio.to_thread(self.runner, conversation, prompt)
                 except Exception as exc:
                     rc = None
                     logger.error("turn in %s could not run: %s", conversation, exc)
+                finally:
+                    self.live.pop(conversation, None)
                 if rc != 0:
                     for ref in refs:   # back to arrived, unless the turn's own Stop hook took it in
                         row = self.desk.ledger.inbox_row(ref)
@@ -223,18 +230,33 @@ class HearthHost:
                 self.failed.pop(conversation, None)
 
 
+def turn_ledger() -> Path:
+    return Path(pwd.getpwuid(os.getuid()).pw_dir) / ".hearth" / "ledger.jsonl"
+
+
 async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: float = SWEEP_S,
-                poll_ms: int = 5000, stop: Optional[asyncio.Event] = None) -> None:
+                poll_ms: int = 5000, stop: Optional[asyncio.Event] = None,
+                status_path: Optional[Path] = None, ledger: Optional[Path] = None) -> None:
     """Stay at the desk for every live conversation of the identity in ``home``: one Desk per
     channel seat, sharing one host. A seat a live session has open is left to that session.
     The host's own seat is always attended, so a request reaches a desk that can carry it out
-    even when no conversation is listed."""
+    even when no conversation is listed.
+
+    With ``status_path``, the agent's status is served there (hearth.status). A status that
+    can't be served is logged and the host carries on: the agent runs the same either way."""
     catalog = offers.load_catalog(home)
     main = Desk(home, seat="hearth")
     host = host_factory(main)
     main.host = host
     seats: dict[str, tuple[Desk, asyncio.Task]] = {}
     stop = stop or asyncio.Event()
+    reporting = None
+    if status_path is not None:
+        reporter = status.Reporter(host, pwd.getpwuid(os.getuid()).pw_name, ledger or turn_ledger())
+        try:
+            reporting = await status.serve(reporter, status_path)
+        except Exception as exc:
+            logger.error("status not served: %s", exc)
     await host.recover()
 
     async def attend(desk):
@@ -272,6 +294,8 @@ async def serve(home: Path, host_factory: Callable = HearthHost, *, sweep_s: flo
             await drop(seat)
         await host.drain()
         await main.close()
+        if reporting is not None:
+            await reporting.stop(grace=1)
 
 
 def main() -> int:
@@ -282,7 +306,12 @@ def main() -> int:
     if rc != tenantcheck.GREEN:
         print(f"hearth.host: {msg}", file=sys.stderr)
         return 78   # EX_CONFIG: systemd doesn't restart-loop on it (RestartPreventExitStatus)
-    asyncio.run(serve(tenantcheck.frontdesk_home_path(t)))
+    # systemd's RuntimeDirectory= (hearth-host@.service): made for this tenant only, gone when it stops
+    runtime = os.environ.get("RUNTIME_DIRECTORY")
+    if runtime is None:
+        logger.error("no RUNTIME_DIRECTORY; status not served")
+    asyncio.run(serve(tenantcheck.frontdesk_home_path(t),
+                      status_path=Path(runtime) / "status.sock" if runtime else None))
     return 0
 
 

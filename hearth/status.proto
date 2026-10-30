@@ -1,0 +1,58 @@
+// What one agent's running process reports about itself to something outside it
+// (docs/interfaces/STATUS.md). Read-only: no method here starts a turn, sends a message or
+// changes anything in the home. Nothing in a reply is what was said in a thread.
+//
+// Regenerate the Python modules from the repository root:
+//   python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. hearth/status.proto
+syntax = "proto3";
+
+package hearth.status.v1;
+
+service Status {
+  rpc Get(GetRequest) returns (Report);
+}
+
+message GetRequest {}
+
+message Report {
+  string agent = 1;
+  // When this report was made, Unix seconds by the agent's clock.
+  double as_of = 2;
+  repeated LiveTurn live_turns = 3;
+  repeated PendingWake pending_wakes = 4;
+  repeated RecentTurn recent_turns = 5;
+  // Each report this process can't give, and why. Absent from here means given above, so a
+  // reader never takes an empty list it wasn't given for "none".
+  repeated NotReported not_reported = 6;
+}
+
+message LiveTurn {
+  string thread = 1;
+  double started = 2;
+}
+
+message PendingWake {
+  string thread = 1;
+  // How many waking messages are waiting in this thread.
+  int32 waiting = 2;
+  // Set when the thread is open in a session outside this process, which takes its own messages.
+  bool open_elsewhere = 3;
+  // Set when the last turn here failed: how many in a row, and when it's tried again.
+  int32 failures = 4;
+  double retry_at = 5;
+}
+
+message RecentTurn {
+  string thread = 1;
+  string trigger = 2;
+  double started = 3;
+  double ended = 4;
+  bool ok = 5;
+  // The runner's own one-line reason, never prompt or reply text.
+  string error = 6;
+}
+
+message NotReported {
+  string report = 1;
+  string reason = 2;
+}

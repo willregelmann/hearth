@@ -55,5 +55,5 @@ How it's built today, which the map leaves open:
 
 * Browser to the board's process: HTTP and JSON, with server-sent events for live updates, on a Unix socket behind a proxy that does the operator's login.
 * The board's process to each agent's status: gRPC on a Unix socket the agent's host process serves as the agent, with a group grant for the board's user.
-* Talking: the operator's own Front Desk identity.
+* Talking: the operator's own Front Desk identity. The board is one more chat client for it, signed in with a token of its own rather than the password, and talks in the operator's direct room with each agent, the same room the operator's other chat clients show.
 * Restart: systemd, through a polkit rule limited to the agents' host units.

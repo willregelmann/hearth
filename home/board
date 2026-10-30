@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# home/board — run by Will with sudo. Installs the operator's board (docs/interfaces/BOARD.md).
+#
+#   sudo home/board            # do it
+#   sudo home/board --dry-run  # print what it would do, change nothing
+#
+# The board runs as its own system user, hearth-board, never root or an agent (docs/decisions/0013).
+# It reads each agent's status through the group of /run/hearth/<agent>, which each agent's host
+# sets at start, so agents already running pick the grant up when their host next restarts.
+# The page is served on /run/hearth-board/board.sock, which only hearth-operators can reach:
+# put the operator's proxy (the one that does the login) in that group. Never a tenant.
+set -euo pipefail
+
+DRY=0; [ "${1:-}" = "--dry-run" ] && DRY=1
+run() { echo "+ $*"; [ $DRY = 1 ] || "$@"; }
+die() { echo "STOP: $*" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || [ $DRY = 1 ] || die "run with sudo"
+here=$(cd "$(dirname "$0")" && pwd)
+REG=/var/lib/hearth/tenants
+VENV=/opt/hearth/venv
+
+[ -x "$VENV/bin/python" ] || die "$VENV isn't installed; provision an agent first"
+
+# 1. users and groups. hearth-board must not be a tenant, and no tenant may be an operator: either
+#    would let an agent read another agent's status, or open the board.
+[ -e "$REG/hearth-board" ] && die "hearth-board is a registered tenant"
+getent group hearth-operators >/dev/null || run groupadd --system hearth-operators
+if getent passwd hearth-board >/dev/null; then echo "= user hearth-board exists"
+else run useradd --system --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin hearth-board; fi
+for t in $(ls "$REG" 2>/dev/null); do
+  for g in hearth-board hearth-operators; do
+    id -nG "$t" 2>/dev/null | tr ' ' '\n' | grep -qx "$g" && die "tenant $t is in $g; take it out first"
+  done
+done
+
+# 2. the unit, root's. A different one already installed is a person's call, like provision's.
+SRC=$here/hearth-board.service; DST=/etc/systemd/system/hearth-board.service
+if [ -e "$DST" ] && ! cmp -s "$SRC" "$DST"; then
+  die "$DST exists and differs from $SRC; replace it by hand, then systemctl daemon-reload"
+fi
+if [ -e "$DST" ]; then echo "= $DST present"
+else run install -o root -g root -m 644 "$SRC" "$DST"; run systemctl daemon-reload; fi
+run systemctl enable --now hearth-board.service
+
+cat <<EOF
+
+Board installed. Next, as Will:
+  1. Restart each agent's host so its status directory takes the board's group:
+       sudo systemctl restart 'hearth-host@*'
+  2. Put your proxy's user in hearth-operators, and point it at the socket, e.g. Caddy:
+       sudo usermod -aG hearth-operators caddy
+       reverse_proxy unix//run/hearth-board/board.sock
+     with your login in front of it. Only the operator opens the board.
+  3. To talk to agents from the board, sign it in as your own Front Desk identity (a person, never
+     an agent). It keeps a token of its own, not your password; \`frontdesk --as <you> proof\`
+     prints the password to type:
+       sudo -u hearth-board $VENV/bin/python -I -m hearth.board sign-in \\
+         --desk http://127.0.0.1:8008 --user @<you>:<desk>
+EOF
