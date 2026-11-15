@@ -63,4 +63,42 @@ expect "store dir writable by others: STOP before downloading" \
 reset; mkdir -p "$t/realstore"; ln -s "$t/realstore" "$S"; rc=$(run)
 expect "store dir is a link: STOP" $([ "$rc" != 0 ] && grep -q 'directory only' "$t/out" && [ ! -e "$t/realstore/2.1.288" ]; echo $?) "rc=$rc $(cat "$t/out")"
 rm -f "$S"
+
+# The tenant's link (~/.local/bin/claude) on a pin move: provision repoints a link that still names
+# another version in the tenant's own versions dir, and STOPs on any other link or a non-link.
+# Runs the link block as written, on a scratch home, with the tenant played by the caller.
+lblock=$(sed -n '/^if \[ -L "\$link" \] && \[ "\$(readlink "\$link")" = "\$dst" \]/,/^else as_t ln -s/p' "$here/provision")
+[ -n "$lblock" ] && echo "$lblock" | grep -q 'repoint' || { echo "FAIL could not extract the link block"; exit 1; }
+V=$t/home/.local/share/claude/versions; LK=$t/home/.local/bin/claude
+{ printf 'set -euo pipefail\n'
+  printf 'die() { echo "STOP: $*" >&2; exit 1; }\n'
+  printf 'run() { echo "+ $*"; [ "${DRY:-0}" = 1 ] || "$@"; }\nas_t() { run "$@"; }\ntq() { "$@"; }\n'
+  printf 'CLAUDE_VERSION=2.1.325; vdir=%s; dst=$vdir/$CLAUDE_VERSION; link=%s\n' "$V" "$LK"
+  printf '%s\n' "$lblock"; } > "$t/step3l"
+lrun() { bash "$t/step3l" > "$t/out" 2>&1; echo $?; }
+lreset() { rm -rf "$t/home"; mkdir -p "$V" "$(dirname "$LK")"; cp "$t/good" "$V/2.1.288"; cp "$t/good" "$V/2.1.325"; }
+lreset; ln -s "$V/2.1.288" "$LK"; rc=$(lrun)
+expect "pin move: a link naming the old version is repointed, the old copy stays" \
+  $([ "$rc" = 0 ] && [ "$(readlink "$LK")" = "$V/2.1.325" ] && [ -f "$V/2.1.288" ] && grep -q '^+ repoint .*2.1.288 -> 2.1.325' "$t/out"; echo $?) "rc=$rc link=$(readlink "$LK") $(cat "$t/out")"
+rc=$(lrun)
+expect "second run: the link is already the pinned one, nothing changes" \
+  $([ "$rc" = 0 ] && [ "$(readlink "$LK")" = "$V/2.1.325" ] && grep -q "^= .* ok" "$t/out" && ! grep -q repoint "$t/out"; echo $?) "rc=$rc $(cat "$t/out")"
+lreset; ln -s /usr/bin/true "$LK"; rc=$(lrun)
+expect "a link into a directory that isn't the versions dir: STOP, link untouched" \
+  $([ "$rc" != 0 ] && grep -q "isn't the pinned link" "$t/out" && [ "$(readlink "$LK")" = /usr/bin/true ]; echo $?) "rc=$rc link=$(readlink "$LK") $(cat "$t/out")"
+lreset; cp "$t/good" "$V/not-a-version"; ln -s "$V/not-a-version" "$LK"; rc=$(lrun)
+expect "a link to a file in the versions dir that isn't a version number: STOP" \
+  $([ "$rc" != 0 ] && grep -q "isn't the pinned link" "$t/out" && [ "$(readlink "$LK")" = "$V/not-a-version" ]; echo $?) "rc=$rc link=$(readlink "$LK") $(cat "$t/out")"
+lreset; ln -s "$V/../versions/2.1.288" "$LK"; rc=$(lrun)
+expect "a link through .. into the versions dir: STOP (the path isn't the plain one)" \
+  $([ "$rc" != 0 ] && grep -q "isn't the pinned link" "$t/out" && [ "$(readlink "$LK")" = "$V/../versions/2.1.288" ]; echo $?) "rc=$rc link=$(readlink "$LK") $(cat "$t/out")"
+lreset; cp "$t/good" "$LK"; rc=$(lrun)
+expect "a regular file where the link goes: STOP, file untouched" \
+  $([ "$rc" != 0 ] && grep -q "isn't the pinned link" "$t/out" && [ ! -L "$LK" ] && cmp -s "$LK" "$t/good"; echo $?) "rc=$rc $(cat "$t/out")"
+lreset; rc=$(lrun)
+expect "no link yet: it is created, pointing at the pinned copy" \
+  $([ "$rc" = 0 ] && [ "$(readlink "$LK")" = "$V/2.1.325" ]; echo $?) "rc=$rc link=$(readlink "$LK" 2>&1) $(cat "$t/out")"
+lreset; ln -s "$V/2.1.288" "$LK"; rc=$(DRY=1 lrun)
+expect "dry run: prints the repoint and changes nothing" \
+  $([ "$rc" = 0 ] && grep -q '^+ repoint' "$t/out" && [ "$(readlink "$LK")" = "$V/2.1.288" ]; echo $?) "rc=$rc link=$(readlink "$LK") $(cat "$t/out")"
 exit $fail

@@ -27,11 +27,15 @@ while :; do case "${1:-}" in
   *) break;;
 esac; done
 T=${1:?usage: provision [--dry-run] [--upgrade] <tenant>}
-CLAUDE_VERSION=2.1.288
+CLAUDE_VERSION=2.1.325
 # Root's own copy of the pinned binary, checked against Anthropic's published sha256 for this
-# version (https://downloads.claude.ai/claude-code-releases/2.1.288/manifest.json, linux-x64). The
-# old source, Will's ~/.local/share/claude/versions, is pruned by Claude Code's own updater (#60).
-CLAUDE_SHA256=0298068b686e7fdbaf9402a7a587bb7f49c0b0e084de09f69145a0719207640c
+# version (https://downloads.claude.ai/claude-code-releases/2.1.325/manifest.json, linux-x64). The
+# value was taken from the manifest AFTER its detached signature (manifest.json.sig) verified against
+# Anthropic's release key, fingerprint 31DD DE24 DDFA B679 F42D 7BD2 BAA9 29FF 1A7E CACE (their setup
+# page, "Verify binary integrity"), not from a hash of a file we downloaded. To move the pin, redo
+# that: home/README.md, "Moving the Claude Code pin". The old source, Will's
+# ~/.local/share/claude/versions, is pruned by Claude Code's own updater (#60).
+CLAUDE_SHA256=0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf
 CLAUDE_URL=https://downloads.claude.ai/claude-code-releases/$CLAUDE_VERSION/linux-x64/claude
 CLAUDE_STORE=/opt/hearth/claude; STORE_OWNER=root
 CLAUDE_SRC=$CLAUDE_STORE/$CLAUDE_VERSION
@@ -143,6 +147,13 @@ else
     sudo -u "$T" -H sh -c 'umask 022; cat > "$1.part" && chmod 755 "$1.part" && mv "$1.part" "$1"' sh "$dst" < "$CLAUDE_SRC"
 fi
 if [ -L "$link" ] && [ "$(readlink "$link")" = "$dst" ]; then echo "= $link ok"
+elif [ -L "$link" ] && other=$(readlink "$link") && [ "$(dirname "$other")" = "$vdir" ] \
+     && printf '%s\n' "${other##*/}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  # a pin move: the link still names another version in the tenant's own versions dir. Repoint it;
+  # the old copy stays, so the old version is one `ln -sfn` away (a rollback). Any other link, and
+  # anything that isn't a link, is still a STOP: a person put it there.
+  echo "+ repoint $link: ${other##*/} -> $CLAUDE_VERSION (a pin move; the old copy stays for a rollback)"
+  as_t ln -sfn "$dst" "$link"
 elif tq test -e "$link" || [ -L "$link" ]; then die "$link exists and isn't the pinned link"
 else as_t ln -s "$dst" "$link"; fi
 # pin: stop the background updater (believed: DISABLE_AUTOUPDATER in settings env; check proves the version)

@@ -7,7 +7,7 @@
 
 user        | own    | tenant      | provision (Will, sudo)   | user_exists:agents
 home_dir    | own    | tenant      | provision                | home_private:user:will:--x
-claude_bin  | own    | tenant      | native installer, as tenant | claude_runs:2.1.288
+claude_bin  | own    | tenant      | native installer, as tenant | claude_runs:2.1.325
 oauth       | loan   | Will        | Anthropic (Max)          | model_turn
 loan_reach  | loan   | Will        | claude.ai account, via oauth | loan_reach
 ledger      | own    | tenant      | turn runner              | ledger_writable
