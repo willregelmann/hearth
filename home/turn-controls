@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # home/turn-controls: negative controls for home/turn. Stub claudes, a scratch ledger, no model call.
 #   bash home/turn-controls [path/to/turn]
-# turn takes its ledger and claude from the passwd entry, with no flag to move them, so each
-# control runs a COPY with those two assignments rewritten, executed directly so the real shebang
+# turn takes its ledger, claude and transcript dir from the passwd entry, with no flag to move them, so each
+# control runs a COPY with those three assignments rewritten, executed directly so the real shebang
 # (empty env, python -I) is what's tested. Each control names the property and the failure it must
 # catch. rc 0 only if every one passes.
 set -u
@@ -20,8 +20,8 @@ stub() {  # stub NAME BODY: a fake claude
 }
 at() {    # at CLAUDE: a copy of turn whose ledger is $L and whose claude is CLAUDE
   local c=$T/turn.$(basename "$1")
-  sed -e "s|^LEDGER = .*|LEDGER = '$L'|" -e "s|^CLAUDE = .*|CLAUDE = '$1'|" "$TURN" > "$c"; chmod 755 "$c"
-  [ "$(grep -c "^LEDGER = '$L'\$\|^CLAUDE = '$1'\$" "$c")" = 2 ] || { echo "turn-controls: cannot retarget $TURN" >&2; exit 2; }
+  sed -e "s|^LEDGER = .*|LEDGER = '$L'|" -e "s|^CLAUDE = .*|CLAUDE = '$1'|" -e "s|^PROJECTS = .*|PROJECTS = '$T/projects'|" "$TURN" > "$c"; chmod 755 "$c"
+  [ "$(grep -c "^LEDGER = '$L'\$\|^CLAUDE = '$1'\$\|^PROJECTS = '$T/projects'\$" "$c")" = 3 ] || { echo "turn-controls: cannot retarget $TURN" >&2; exit 2; }
   echo "$c"
 }
 run() { local cl=$1; shift; "$(at "$cl")" "$@"; }
@@ -178,6 +178,79 @@ python3 -c '
 import json,sys; d=json.loads(sys.argv[1]); e=d.get("env") or {}
 assert d.get("autoMemoryEnabled") is False and e.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY") == "1" and e.get("ENABLE_CLAUDEAI_MCP_SERVERS") == "false", d' "$s" 2>/dev/null \
   && ok "--settings also pins auto-memory off and the env pair (beats a tenant settings env block)" || bad "loan settings env" "settings=[$s]"
+
+# 9. compactions: counted from the session transcript, not from a hook. A fake transcript, laid out as
+#    the 2.1.325 binary builds its lines (read from the binary's strings, NOT copied from a real
+#    transcript): system/compact_boundary with compactMetadata, and the idle notice as its own
+#    system line. A person or the model quoting either marker must not count.
+P=$T/projects/-home-t; mkdir -p "$P"
+SID=s1
+tx() { printf '%s\n' "$@" > "$P/$SID.jsonl"; }
+B='{"type":"system","subtype":"compact_boundary","content":"Conversation compacted","level":"info","compactMetadata":{"trigger":"auto","preTokens":190000}}'
+N1='{"type":"system","subtype":"informational","content":"Compacted while idle, before the prompt cache expired · turn off with \"idleCompaction\": false in settings.json","level":"info"}'
+N2='{"type":"system","subtype":"informational","content":"Compacted using a summary written while you were away · turn off with \"idleCompaction\": false in settings.json","level":"info"}'
+Q1='{"type":"user","message":{"role":"user","content":"does \"subtype\":\"compact_boundary\" appear? Compacted while idle"}}'
+Q2='{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Compacted while idle, before the prompt cache expired compact_boundary"}]}}'
+cmp_field() { field 'r[0]["compactions"]'; }
+fresh; tx "$Q1" "$B" "$B" "$Q2"
+run "$GOOD" --trigger t "p" >/dev/null 2>&1
+[ "$(cmp_field)" = '{"idle": 0, "total": 2}' ] \
+  && ok "compactions: two boundaries count as two, with the quoted markers ignored" \
+  || bad "compactions: boundaries" "got $(cmp_field)"
+fresh; tx "$B" "$N1" "$B" "$N2" "$B"
+run "$GOOD" --trigger t "p" >/dev/null 2>&1
+[ "$(cmp_field)" = '{"idle": 2, "total": 3}' ] \
+  && ok "compactions: idle ones are counted from both notices, so L2 misses = total - idle (3 - 2 = 1)" \
+  || bad "compactions: idle" "got $(cmp_field)"
+fresh; tx "$B" "$N1"
+run "$GOOD" --trigger t "p" >/dev/null 2>&1
+[ "$(cmp_field)" = '{"idle": 1, "total": 1}' ] \
+  && ok "compactions: an idle compaction is one compaction, not zero (the boundary is what is counted)" \
+  || bad "compactions: idle as total" "got $(cmp_field)"
+fresh; tx "$Q1" "$Q2"
+run "$GOOD" --trigger t "p" >/dev/null 2>&1
+[ "$(cmp_field)" = '{"idle": 0, "total": 0}' ] \
+  && ok "compactions: a transcript with none says 0, not null" || bad "compactions: none" "got $(cmp_field)"
+fresh; rm -f "$P/$SID.jsonl"
+run "$GOOD" --trigger t "p" >/dev/null 2>&1
+[ "$(cmp_field)" = null ] && ok "compactions: no transcript says null, not 0" || bad "compactions: no transcript" "got $(cmp_field)"
+# the count is cumulative, like usage: a later row of the same session shows the larger number
+fresh; tx "$B"; run "$GOOD" --trigger t "p" >/dev/null 2>&1; tx "$B" "$N1" "$B"; run "$GOOD" --trigger t "p" >/dev/null 2>&1
+[ "$(field 'r[0]["compactions"]["total"], r[1]["compactions"]["total"]')" = '[1, 2]' ] \
+  && ok "compactions: cumulative per session (1 then 2), so a turn's own is the difference" \
+  || bad "compactions: cumulative" "got $(field '[r[0]["compactions"], r[1]["compactions"]]')"
+# a failed turn still records the count when it resumed a session (a failed turn can follow a
+# compaction): no parseable result, so the session id comes from --resume
+fresh; tx "$B" "$B"; run "$(stub boom 'echo boom >&2; exit 3')" --resume "$SID" --trigger t "p" >/dev/null 2>&1
+[ "$(field 'r[0]["compactions"]')" = '{"idle": 0, "total": 2}' ] \
+  && ok "compactions: a failed resumed turn still records the session's count" \
+  || bad "compactions: failed resumed turn" "got $(field 'r[0]["compactions"]')"
+fresh; tx "$B"; run "$(stub boom2 'echo boom >&2; exit 3')" --trigger t "p" >/dev/null 2>&1
+[ "$(field 'r[0]["compactions"]')" = null ] \
+  && ok "compactions: a failed turn with no session id is null" || bad "compactions: failed, no id" "got $(field 'r[0]["compactions"]')"
+fresh; tx "$B" "$B" "$B"; run "$(stub boom3 'sleep 30')" --resume "$SID" --timeout 1 --trigger t "p" >/dev/null 2>&1
+t_cmp=$(field '"compactions" in r[0], r[0].get("compactions")')
+fresh; run "$T/nope" --trigger t "p" >/dev/null 2>&1
+m_cmp=$(field '"compactions" in r[0], r[0].get("compactions")')
+[ "$t_cmp" = '[true, null]' ] && [ "$m_cmp" = '[true, null]' ] \
+  && ok "compactions: every row carries the key, null on a timeout and a missing binary" \
+  || bad "compactions: key on every row" "timeout=$t_cmp missing-binary=$m_cmp"
+# compactMetadata.userContext holds the user's own /compact instructions, so a real boundary line can
+# quote an idle notice. It is one compaction and not an idle one.
+fresh; UQ='{"type":"system","subtype":"compact_boundary","content":"Conversation compacted","compactMetadata":{"trigger":"manual","preTokens":9,"userContext":"keep the line Compacted while idle, before the prompt cache expired"}}'
+tx "$UQ"; run "$GOOD" --trigger t "p" >/dev/null 2>&1
+[ "$(cmp_field)" = '{"idle": 0, "total": 1}' ] \
+  && ok "compactions: a boundary whose userContext quotes the idle notice is not counted idle" \
+  || bad "compactions: boundary quoting the notice" "got $(cmp_field)"
+# a path-like session id never leaves the projects dir. The file the id would reach (projects/x.jsonl,
+# one level above the project dir) exists and holds a boundary, so only the guard keeps it at null.
+fresh; printf '%s\n' "$B" > "$T/projects/x.jsonl"
+SPY=$(stub traversal "echo '{\"type\":\"result\",\"is_error\":false,\"session_id\":\"../x\",\"result\":\"x\",\"modelUsage\":{}}'")
+run "$SPY" --trigger t "p" >/dev/null 2>&1
+[ "$(field 'r[0]["compactions"]')" = null ] \
+  && ok "compactions: a session id with a slash is refused (null), though the file it names exists" \
+  || bad "compactions: traversal" "got $(field 'r[0]["compactions"]')"
+rm -f "$T/projects/x.jsonl"
 
 echo "$pass ok, $fail failed"
 [ $fail = 0 ]

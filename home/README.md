@@ -19,7 +19,10 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   separate) and list_cost_usd (a list price; Max doesn't bill per turn), never prompt or reply
   text. Usage is session-cumulative as claude reports it: on a --resume'd turn, subtract the
   previous row with the same session_id. Rows are the tenant's own claims, since the tenant writes
-  the file. `turn-controls` tests
+  the file. `compactions` is `{"total": N, "idle": K}`: the completed compactions in that session's
+  transcript so far (cumulative too), K of them Claude Code's idle compaction, so `total - idle` is a
+  #41 L2 miss and `turn-arms.sh` shows each part of the count matters. The line shapes it reads were
+  taken from the 2.1.325 binary's strings, not from a real transcript. `turn-controls` tests
   it with stub claudes; each guard's control was shown to fail with the guard removed.
 - `provision`: run by Will with sudo (`--dry-run` changes nothing). Before any change it stops
   unless the host has setfacl and getfacl (the `acl` package, which Raspberry Pi OS doesn't ship)
@@ -31,7 +34,8 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   its owner could write one. A dry run against `foil` stops there. `check` and
   `inventory` are installed root-owned under /opt/hearth/home, outside every home, and check's
   `judge` line asserts the tenant can't write them or any directory above them. It follows the choices
-  put to Will: a per-tenant Claude Code pinned to 2.1.288, Claude Code's own memory declared absent
+  put to Will: a per-tenant Claude Code at the version provision pins (`CLAUDE_VERSION`; 2.1.325 since
+  the bump from 2.1.288), Claude Code's own memory declared absent
   (`cc_memory`), and no sudo.
 - The pinned binary comes from root's store, `/opt/hearth/claude/<version>`, never from another
   user's install (Claude Code's updater pruned Will's copy, #60). provision downloads it from
@@ -40,6 +44,24 @@ First tenant: the new Sonnet agent (proposed name Buster, which is Buster's to a
   every later run, stopping rather than replacing anything. A tenant's existing copy is judged by
   the same pinned hash. A copy placed in the store by hand (e.g. offline) is accepted on the same
   terms. `store-controls` tests this block without root; `store-arms.sh` shows each guard matters.
+- Moving the Claude Code pin (`CLAUDE_VERSION` and `CLAUDE_SHA256` in provision, and the version in
+  `home/inventory`'s `claude_runs:`; nothing else records either):
+  1. Take the sha256 from Anthropic's signed manifest, not from a file you downloaded: fetch
+     `https://downloads.claude.ai/claude-code-releases/<v>/manifest.json` and `manifest.json.sig` and
+     the key at `https://downloads.claude.ai/keys/claude-code.asc`, import it into a THROWAWAY
+     `GNUPGHOME`, and require `gpg --verify` to report `VALIDSIG 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE`
+     (the fingerprint on Anthropic's setup page, "Verify binary integrity"). Then read
+     `platforms."linux-x64".checksum`. Signatures exist from 2.1.89 on.
+  2. Download the binary once and compare it with that value, as a second check of the pipe.
+  3. Re-run the plugin-CLI probe against the new binary (`tests/` has none; the one used for 2.1.325
+     is described in the PR body) and the controls below.
+  4. On the host, `sudo home/provision --dry-run <tenant>`, then `--upgrade`. A tenant's link
+     (`~/.local/bin/claude`) that still names another version in the tenant's own versions dir is
+     repointed; anything else there is a STOP. The old copy stays in the versions dir.
+  5. Rollback: `ln -sfn ~<tenant>/.local/share/claude/versions/<old> ~<tenant>/.local/bin/claude` as
+     the tenant, and put the old `CLAUDE_VERSION`/`CLAUDE_SHA256`/`claude_runs:` back. `check` then
+     reads the old version again. The store keeps every version it was given, so nothing is
+     downloaded to roll back.
 - `board`: run by Will with sudo, once per host. Installs the operator's board
   (docs/interfaces/BOARD.md) as `hearth-board.service`, running as the system user `hearth-board`,
   never root or an agent (docs/decisions/0013). It reads each agent's status on
