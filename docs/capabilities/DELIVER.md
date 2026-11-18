@@ -6,7 +6,7 @@ What the agent does with a wake is the agent's judgment. That it is shown, in th
 
 ## Invariants
 
-- **A wake reaches the conversation it names, whether or not any turn or session is running, and is never delivered into a different one.**
+- **A wake reaches the conversation it names, without anyone having to open it, and is never delivered into a different one.**
 - **At most one gateway delivers for a Hearth home at a time.** A second one refuses to start.
 - A woken turn is shown each wake's source and note together, and is told when a wake may have been shown before and how late a wake is.
 - A woken turn is told its reply text is not delivered to anyone.
