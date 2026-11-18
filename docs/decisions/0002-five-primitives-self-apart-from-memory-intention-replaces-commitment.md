@@ -1,5 +1,7 @@
 # Five primitives, with Self kept apart from Memory and Intention replacing Commitment
 
+Superseded by ADR-0014.
+
 ## Context and Problem Statement
 
 Round 1 of the primitives discussion proposed five: Self, Memory, Thread, Commitment and Home. Will asked whether Commitment belonged at all. Two collapses were also on the table: Self into Memory, since both are things the agent knows, and Intention into Thread, since many intentions start in a conversation. Which things is Hearth made of?
