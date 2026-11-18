@@ -46,7 +46,7 @@ Chosen option: the third, as the owner reasoned it.
 
 ### Confirmation
 
-No file in the package, its metadata or its documentation outside `docs/decisions/` and `discussions/` names either product.
+No file in the package, its metadata or its documentation outside `docs/decisions/`, `discussions/` and `reviews/` names either product.
 
 ## Pros and Cons of the Options
 
