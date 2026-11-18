@@ -1,5 +1,7 @@
 # The focus is "what am I in the middle of, and what would close it?"
 
+Superseded by ADR-0014.
+
 ## Context and Problem Statement
 
 Hearth's first intent asked "what am I in the middle of, and for whom?". Will challenged the primitive behind "for whom" ("I'm not sure COMMITMENT belongs - that may be your service-oriented training talking"). Most of what an agent leaves open has nobody waiting on it: a check that closes on a test, a draft that closes on a condition in the world. What question should the intent keep open?

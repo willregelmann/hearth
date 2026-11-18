@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "\"${HEARTH_PYTHON:-python3}\" -m hearth hook session-start"}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "\"${HEARTH_PYTHON:-python3}\" -m hearth hook session-end"}]}]
+  }
+}

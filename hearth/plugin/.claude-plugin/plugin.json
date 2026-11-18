@@ -1,0 +1,6 @@
+{
+  "name": "hearth",
+  "version": "0.0.0",
+  "description": "Hearth's side of every session it launches: tells the agent how to wait, tells the gateway which sessions are open, and adds commands to set a wake and to see status.",
+  "license": "MIT"
+}

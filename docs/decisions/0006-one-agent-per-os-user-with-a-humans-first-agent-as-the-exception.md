@@ -1,5 +1,7 @@
 # One agent per OS user, with a human's first agent as the one exception
 
+Superseded by ADR-0016.
+
 ## Context and Problem Statement
 
 Home says the agent holds what it depends on in exclusive custody, and PROPOSAL.md §5 and `home/README.md` already say a tenant comes up as "a fresh OS user". Several agents can still run under one user. How many agents may run as one OS user?

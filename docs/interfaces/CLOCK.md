@@ -1,19 +1,18 @@
 # Clock
 
-When something fires without anyone sending a message: a review date coming due, a wake the agent set for itself, a sweep. On the other side is time.
+Time, which is what makes a wake due, a retry come round and a check run again. On the other side is the machine's own clock.
 
 ## What passes
 
 | Firing | What it does |
 |---|---|
-| Due review | Starts a [wake](../capabilities/WAKE.md) for an intention whose review date has come |
-| Set wake | Starts a wake the agent set for itself, in the thread it set it from |
-| Sweep | Runs the agent's sweep over every open intention |
+| Not-before time reached | Makes a [wake](../primitives/WAKE.md) due |
+| Retry delay passed | Makes a conversation whose turn failed eligible for another turn |
+| Check interval passed | Runs a [check](CHECKS.md) again |
 
 ## Invariants
 
-- **The clock says when, never where.** A firing runs in the agent's own [home](../primitives/HOME.md), as the agent, from its own process.
-- Each ledger has one clock, its owner's. Comparing times across ledgers allows a declared skew margin, and a checker uses its own clock, never the owner's.
-- A firing that couldn't run is reported, never skipped silently, and runs late rather than not at all.
-- A firing never runs twice for one due time.
-- A set wake fires whether or not anyone has its thread open, and whether or not the turn that set it is still running.
+- **A wake never runs before its not-before time.**
+- A firing that couldn't happen on time happens late rather than not at all, and a late wake says how late.
+- A restart never fires a not-before wake early, and never loses one.
+- The gateway reads time from one place, so that a test can replace it.

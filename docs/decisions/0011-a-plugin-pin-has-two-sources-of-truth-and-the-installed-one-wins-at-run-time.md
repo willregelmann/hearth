@@ -1,5 +1,7 @@
 # A plugin pin has two sources of truth, and the installed one wins at run time
 
+Superseded by ADR-0015.
+
 ## Context and Problem Statement
 
 Hearth pins its plugins — Front Desk and Tapestry — to exact commits. Until [ADR-0009](0009-tapestry-and-front-desk-are-pinned-imports-front-desk-carries-agent-traffic-now.md) landed, `hearth/pins.py` read those pins from `pyproject.toml` by walking up from the module's own file. That works in a source checkout and fails in a non-editable install: `pyproject.toml` is not installed beside the package, so `pins()` raised `FileNotFoundError` on `site-packages/pyproject.toml` — the failure that `/opt/hearth/venv` would hit on every call.

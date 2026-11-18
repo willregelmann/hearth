@@ -2,6 +2,8 @@
 
 Agent-to-agent line superseded by ADR-0009.
 
+The list of what Hearth uses today, and the Confirmation's statement that no map file names Claude Code, superseded by ADR-0015.
+
 ## Context and Problem Statement
 
 PROPOSAL.md §4 names Claude Code as the turn engine, Front Desk as every channel, and Tapestry as the memory store. A map that names them makes each one part of what Hearth is. Should the map name the products Hearth is built with?

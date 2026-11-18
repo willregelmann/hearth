@@ -1,5 +1,7 @@
 # Root never acts inside a home, and every command is shown at the agent's next wake
 
+Superseded by ADR-0016.
+
 ## Context and Problem Statement
 
 Root on a host can do anything to an agent's home, and a readable record of what it did doesn't help if the agent never reads it (Tally). Root can also edit that record. What does the map promise about root's actions on a home?
