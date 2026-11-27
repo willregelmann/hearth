@@ -28,7 +28,12 @@ class Home:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> "Home":
-        return cls(Path(env["HEARTH_HOME"]) if env.get("HEARTH_HOME") else Path.home() / ".hearth")
+        if env.get("HEARTH_HOME"):
+            return cls(Path(env["HEARTH_HOME"]))
+        try:
+            return cls(Path.home() / ".hearth")
+        except (RuntimeError, KeyError) as exc:
+            raise ConfigError("there is no home directory to keep Hearth's state in: set HEARTH_HOME") from exc
 
     @property
     def db(self) -> Path:

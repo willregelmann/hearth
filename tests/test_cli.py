@@ -59,12 +59,12 @@ async def test_the_operator_raises_lists_and_cancels_wakes(home, fake, root, sta
     listing = json.loads((await cli(home, "wake", "list", "--agent", "ash", "--json")).stdout)
     [pending] = listing
     assert pending["not_before"] == clock.now + 5400
-    cancelled = await cli(home, "wake", "cancel", str(pending["id"]))
+    cancelled = await cli(home, "wake", "cancel", str(pending["id"]), "--reason", "plans changed")
     assert cancelled.returncode == 0
     everything = json.loads((await cli(home, "wake", "list", "--all", "--json")).stdout)
     assert sorted(w["state"] for w in everything) == ["canceled", "done"]
 
-    refused = await cli(home, "wake", "cancel", str(pending["id"]))
+    refused = await cli(home, "wake", "cancel", str(pending["id"]), "--reason", "plans changed")
     assert refused.returncode == 1 and "already canceled" in refused.stderr
 
 
@@ -147,3 +147,32 @@ def test_the_plugin_hearth_loads_into_every_session_is_where_the_command_says(ho
     hooks = json.loads((where / "hooks" / "hooks.json").read_text())["hooks"]
     assert set(hooks) == {"SessionStart", "SessionEnd"}
     assert {"agents", "status", "wake"} <= {p.stem for p in (where / "commands").glob("*.md")}
+
+
+def test_with_no_hearth_home_and_no_home_directory_the_command_says_so(monkeypatch):
+    from pathlib import Path
+    from hearth.home import ConfigError, Home
+    import pytest
+
+    def no_home():
+        raise RuntimeError("Could not determine home directory.")
+    monkeypatch.setattr(Path, "home", staticmethod(no_home))
+    with pytest.raises(ConfigError, match="HEARTH_HOME"):
+        Home.from_env({})
+
+
+def test_install_writes_the_session_hooks_and_keeps_the_rest_of_the_settings(home, root, fake):
+    agent = register(home, "ash", root)
+    agent.config_dir.mkdir(parents=True, exist_ok=True)
+    settings = agent.config_dir / "settings.json"
+    settings.write_text(json.dumps({"model": "keep-me", "hooks": {"SessionStart": [
+        {"hooks": [{"type": "command", "command": "echo mine"}]}]}}))
+    for _ in range(2):          # installing twice leaves one copy
+        done = hearth_cli(home, "agent", "install", "ash", env={"HEARTH_CLAUDE": str(fake.path)})
+        assert done.returncode == 0, done.stdout + done.stderr
+    written = json.loads(settings.read_text())
+    assert written["model"] == "keep-me"
+    starts = [h["command"] for g in written["hooks"]["SessionStart"] for h in g["hooks"]]
+    assert starts[0] == "echo mine" and len(starts) == 2 and "--record-only" in starts[1]
+    assert [h["command"] for g in written["hooks"]["SessionEnd"] for h in g["hooks"]][0].endswith(
+        "hook session-end --record-only")

@@ -214,7 +214,7 @@ async def test_an_operator_can_list_and_cancel_a_pending_wake_but_not_a_running_
     [listed] = (await ask(home, op="wake.list"))["wakes"]
     assert listed["id"] == later["id"] and listed["state"] == "pending"
 
-    cancelled = await ask(home, op="wake.cancel", id=later["id"])
+    cancelled = await ask(home, op="wake.cancel", id=later["id"], reason="not needed")
     assert cancelled["ok"]
     assert [w["state"] for w in await wakes(home)] == ["canceled"]
     clock.advance(7200)
@@ -224,9 +224,9 @@ async def test_an_operator_can_list_and_cancel_a_pending_wake_but_not_a_running_
     fake.hold()
     running = await push(home, "ash", "talk")
     await wait_until(lambda: len(fake.starts) == 1)
-    refusal = await ask(home, op="wake.cancel", id=running["id"])
+    refusal = await ask(home, op="wake.cancel", id=running["id"], reason="not needed")
     assert not refusal["ok"] and "running" in refusal["error"]
-    unknown = await ask(home, op="wake.cancel", id=9999)
+    unknown = await ask(home, op="wake.cancel", id=9999, reason="not needed")
     assert not unknown["ok"] and "no wake" in unknown["error"]
     fake.release()
     await wait_until(lambda: len(fake.ends) == 1)
@@ -264,3 +264,103 @@ def _alive(pid: int) -> bool:
             return False
         time.sleep(0.02)
     return True
+
+
+# A session is exactly one conversation (docs/primitives/CONVERSATION.md) -------------------------------
+
+async def test_a_session_is_exactly_one_conversation_when_a_names_first_turn_sets_a_wake_for_its_own_session(
+        home, fake, root, start_gateway):
+    from hearth import conversation
+    from hearth.db import connect
+    register(home, "ash", root)
+    await start_gateway()
+    fake.hold()
+    await push(home, "ash", "build")
+    await wait_until(lambda: len(fake.starts) == 1, what="the name's first turn")
+    session = fake.starts[0]["session"]
+    mapped = conversation.lookup(connect(home.db), "ash", "build")
+    assert mapped == session, "a name's first turn is mapped to its session as soon as the session starts"
+
+    ack = await push(home, "ash", session, note="come back to the build")   # what the plugin tells the agent to do
+    assert ack["conversation"] == "build"
+    await quiet(0.6)
+    assert len(fake.starts) == 1, "a second turn resumed the session beside the first"
+
+    fake.release()
+    await wait_until(lambda: len(fake.ends) == 2, what="the self-set wake to run after the first turn")
+    assert fake.starts[1]["resume"] == session and "come back to the build" in fake.starts[1]["prompt"]
+    await push(home, "ash", "build")
+    await wait_until(lambda: len(fake.ends) == 3, what="the name's next wake")
+    assert fake.starts[2]["resume"] == session, "the name lost its session"
+    rows = connect(home.db).execute("SELECT name, session_id FROM conversations").fetchall()
+    assert [tuple(r) for r in rows] == [("build", session)]
+
+
+def test_a_session_found_under_two_conversations_is_merged_into_the_named_one_and_says_so(root):
+    from hearth import conversation
+    from hearth.db import connect, transaction
+    conn = connect(root / "h.db")
+    session = "0cff4e6a-ff02-47e7-a38e-6463d625ac29"
+    with transaction(conn):
+        named = conversation.resolve(conn, "ash", "build")
+        by_id = conversation.resolve(conn, "ash", session)
+        conn.execute("INSERT INTO wakes(agent, conversation_id, source, key, idem, created_at, state) "
+                     "VALUES ('ash', ?, 'self', 'k', 'push:k', 0, 'pending')", (by_id.id,))
+    with transaction(conn):
+        said = conversation.record_session(conn, named.id, session)
+    assert said and "merged" in said
+    assert [tuple(r) for r in conn.execute("SELECT id, name, session_id FROM conversations")] == [
+        (named.id, "build", session)]
+    assert conn.execute("SELECT conversation_id FROM wakes").fetchone()[0] == named.id
+
+
+def test_a_session_whose_other_conversation_is_mid_turn_is_not_merged_and_says_why(root):
+    from hearth import conversation
+    from hearth.db import connect, transaction
+    conn = connect(root / "h.db")
+    session = "0cff4e6a-ff02-47e7-a38e-6463d625ac29"
+    with transaction(conn):
+        named = conversation.resolve(conn, "ash", "build")
+        by_id = conversation.resolve(conn, "ash", session)
+        conn.execute("INSERT INTO wakes(agent, conversation_id, source, key, idem, created_at, state) "
+                     "VALUES ('ash', ?, 'self', 'k', 'push:k', 0, 'running')", (by_id.id,))
+    with transaction(conn):
+        said = conversation.record_session(conn, named.id, session)
+    assert said and "left without it" in said
+    assert conversation.get(conn, named.id).session_id is None
+
+
+# A cancel carries a reason and who cancelled it (docs/primitives/WAKE.md) ------------------------------
+
+async def test_a_cancel_carries_a_reason_and_who_cancelled_it(home, fake, root, start_gateway):
+    register(home, "ash", root)
+    await start_gateway()
+    by_agent = await push(home, "ash", "deploy", delay=3600, note="check the deploy")
+    by_operator = await push(home, "ash", "chat", delay=3600)
+    assert (await ask(home, op="wake.cancel", id=by_agent["id"], agent="ash", reason="the deploy was rolled back"))["ok"]
+    assert (await ask(home, op="wake.cancel", id=by_operator["id"], reason="asked twice"))["ok"]
+    listed = {w["id"]: w for w in await wakes(home)}
+    assert (listed[by_agent["id"]]["canceled_by"], listed[by_agent["id"]]["cancel_reason"]) == (
+        "ash", "the deploy was rolled back")
+    assert (listed[by_operator["id"]]["canceled_by"], listed[by_operator["id"]]["cancel_reason"]) == (
+        "operator", "asked twice")
+
+
+async def test_a_cancel_without_a_reason_is_refused_and_the_wake_stays_pending(home, fake, root, start_gateway):
+    register(home, "ash", root)
+    await start_gateway()
+    later = await push(home, "ash", "talk", delay=3600)
+    for reason in (None, "", "   "):
+        refusal = await ask(home, op="wake.cancel", id=later["id"], reason=reason)
+        assert not refusal["ok"] and "reason" in refusal["error"]
+    assert [w["state"] for w in await wakes(home)] == ["pending"]
+
+
+async def test_an_agent_cancels_only_its_own_wakes(home, fake, root, start_gateway):
+    register(home, "ash", root)
+    register(home, "wren", root)
+    await start_gateway()
+    hers = await push(home, "wren", "house", delay=3600)
+    refusal = await ask(home, op="wake.cancel", id=hers["id"], agent="ash", reason="not mine to keep")
+    assert not refusal["ok"] and "only its own" in refusal["error"]
+    assert [w["state"] for w in await wakes(home, agent="wren")] == ["pending"]

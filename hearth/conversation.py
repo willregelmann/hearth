@@ -79,17 +79,44 @@ def get(conn: sqlite3.Connection, conversation_id: int) -> Conversation:
     return _row(conn.execute("SELECT * FROM conversations WHERE id=?", (conversation_id,)).fetchone())
 
 
-def record_session(conn: sqlite3.Connection, conversation_id: int, session_id: Optional[str]) -> bool:
-    """Remember the session a turn reported, when the conversation has none yet: that is how a name's
-    first turn becomes the session the name stands for. Returns whether it was recorded."""
+def record_session(conn: sqlite3.Connection, conversation_id: int, session_id: Optional[str]) -> Optional[str]:
+    """Map a conversation with no session yet to the session its turn is in: that is how a name's
+    first turn becomes the session the name stands for. A session is exactly one conversation, so if
+    another conversation already holds this session (a wake named it by its id before it was mapped
+    here), that one is merged into this one. Call inside a transaction.
+
+    Returns None when nothing needed doing or it was done quietly, and otherwise a sentence for the log
+    saying what was merged or why the session could not be mapped."""
     if not isinstance(session_id, str) or not SESSION_ID_RE.match(session_id):
-        return False
-    try:
-        cur = conn.execute("UPDATE conversations SET session_id=? WHERE id=? AND session_id IS NULL",
-                           (session_id.lower(), conversation_id))
-    except sqlite3.IntegrityError:
-        return False
-    return cur.rowcount == 1
+        return None
+    session_id = session_id.lower()
+    mine = conn.execute("SELECT agent, session_id FROM conversations WHERE id=?", (conversation_id,)).fetchone()
+    if mine is None or mine["session_id"] is not None:
+        return None
+    other = conn.execute("SELECT id, name FROM conversations WHERE agent=? AND session_id=? AND id<>?",
+                         (mine["agent"], session_id, conversation_id)).fetchone()
+    note = None
+    if other is not None:
+        if other["name"] is not None or conn.execute(
+                "SELECT 1 FROM wakes WHERE conversation_id=? AND state='running'", (other["id"],)).fetchone():
+            return (f"session {session_id} is already conversation {other['name'] or other['id']}; "
+                    f"conversation {conversation_id} was left without it")
+        conn.execute("UPDATE wakes SET conversation_id=? WHERE conversation_id=?", (conversation_id, other["id"]))
+        conn.execute("UPDATE turns SET conversation_id=? WHERE conversation_id=?", (conversation_id, other["id"]))
+        conn.execute("DELETE FROM conversations WHERE id=?", (other["id"],))
+        note = f"session {session_id} was also conversation {other['id']}; merged into conversation {conversation_id}"
+    conn.execute("UPDATE conversations SET session_id=? WHERE id=?", (session_id, conversation_id))
+    return note
+
+
+def record_turn_session(conn: sqlite3.Connection, turn_id: int, session_id: Optional[str]) -> Optional[str]:
+    """What a gateway turn's session-start hook calls: the turn is in ``session_id``, so its
+    conversation is mapped to it before the agent can act. Call inside a transaction."""
+    row = conn.execute("SELECT conversation_id FROM turns WHERE id=? AND outcome IS NULL", (turn_id,)).fetchone()
+    if row is None or not isinstance(session_id, str) or not SESSION_ID_RE.match(session_id):
+        return None
+    conn.execute("UPDATE turns SET session_id=? WHERE id=?", (session_id.lower(), turn_id))
+    return record_session(conn, row["conversation_id"], session_id)
 
 
 def note_failure(conn: sqlite3.Connection, conversation_id: int, now: float, retry_s: float,

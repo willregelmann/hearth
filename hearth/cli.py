@@ -184,6 +184,11 @@ def cmd_agent_install(args, home: Home) -> int:
         else:
             failed += 1
             print(f"plugin {plugin.dir}: FAILED: no .claude-plugin/plugin.json there")
+    try:
+        print(f"session hooks: written to {agents.write_session_hooks(agent, home)}")
+    except agents.ManifestError as exc:
+        failed += 1
+        print(f"session hooks: FAILED: {exc}")
     print(_notify(home, agent.name))
     return 1 if failed else 0
 
@@ -219,8 +224,13 @@ def cmd_wake(args, home: Home) -> int:
         return _wake_list(args, home)
     if args.action == "cancel":
         if args.id is None:
-            raise CommandError("say which wake to cancel: hearth wake cancel ID")
-        response = _ask(home, {"op": "wake.cancel", "id": args.id})
+            raise CommandError("say which wake to cancel: hearth wake cancel ID --reason '...'")
+        if not args.reason:
+            raise CommandError("say why it is cancelled: hearth wake cancel ID --reason '...'")
+        payload = {"op": "wake.cancel", "id": args.id, "reason": args.reason}
+        if os.environ.get("HEARTH_AGENT"):
+            payload["agent"] = os.environ["HEARTH_AGENT"]
+        response = _ask(home, payload)
         print(f"cancelled wake {response['id']}")
         return 0
     agent = args.agent or os.environ.get("HEARTH_AGENT")
@@ -264,6 +274,8 @@ def _wake_list(args, home: Home) -> int:
         line = f"{w['id']:>5}  {w['state']:<8} {w['agent']}/{w['conversation']}  {w['source']}  {w['key']}"
         if w["note"]:
             line += f"  {w['note']!r}"
+        if w["state"] == "canceled" and w.get("cancel_reason"):
+            line += f"  cancelled by {w['canceled_by']}: {w['cancel_reason']!r}"
         if w["state"] == "pending":
             line += f"  next try {_stamp(w['next_try'])}" if w["next_try"] else "  due now"
             if w["deferred"]:
@@ -316,7 +328,7 @@ def cmd_plugin_dir(args, home: Home) -> int:
 
 
 def cmd_hook(args, home: Home) -> int:
-    return hook.run(args.event, sys.stdin.read())
+    return hook.run(args.event, sys.stdin.read(), record_only=args.record_only)
 
 
 # Parser --------------------------------------------------------------------------------------------
@@ -363,6 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
     wk.add_argument("--source", default="cli", help="the label the wake carries")
     wk.add_argument("--key", help="what makes this wake the same wake if it is raised again")
     wk.add_argument("--note")
+    wk.add_argument("--reason", help="with cancel: why the wake is no longer wanted")
     wk.add_argument("--in", dest="delay", metavar="DELAY", help="not before this long from now, such as 30m")
     wk.add_argument("--at", metavar="TIME", help="not before this time (ISO 8601)")
     wk.add_argument("--all", action="store_true", help="with list: include finished and cancelled wakes")
@@ -377,6 +390,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     hk = sub.add_parser("hook", help="run by the plugin's hooks")
     hk.add_argument("event", choices=["session-start", "session-end"])
+    hk.add_argument("--record-only", action="store_true",
+                    help="record the session and tell it nothing: the copy installed in an agent's configuration directory")
     hk.set_defaults(fn=cmd_hook)
     return p
 

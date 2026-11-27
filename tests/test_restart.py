@@ -132,3 +132,13 @@ async def test_only_wakes_finished_very_long_ago_are_forgotten_so_a_key_stays_a_
     await start_gateway()
     again = await push(home, "ash", "talk", key="mail-1")
     assert again["ok"] and not again["duplicate"]
+
+
+def test_a_process_start_is_read_without_ps_where_proc_exists(monkeypatch, tmp_path):
+    from hearth import proc
+    if not proc.HAVE_PROC:
+        pytest.skip("no /proc on this system")
+    monkeypatch.setenv("PATH", str(tmp_path))      # no ps anywhere on it
+    started = proc.start_time(os.getpid())
+    assert started and started.startswith("proc:")
+    assert proc.is_recorded_process(os.getpid(), started)

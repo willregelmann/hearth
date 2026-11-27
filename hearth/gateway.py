@@ -142,7 +142,7 @@ class Gateway:
         write to the transcript beside the turn that replaces it."""
         conn = self.ctx.conn
         for row in conn.execute("SELECT id, pid, pstart FROM turns WHERE outcome IS NULL").fetchall():
-            if row["pid"] and row["pstart"] and proc.is_same_process(row["pid"], row["pstart"]):
+            if row["pid"] and proc.is_recorded_process(row["pid"], row["pstart"]):
                 proc.kill_group(row["pid"])
                 log.warning("killed turn %d, left running by an earlier gateway", row["id"])
         now = self.clock()
@@ -390,7 +390,8 @@ class Gateway:
                 "key": row["key"], "note": row["note"], "state": row["state"], "not_before": row["not_before"],
                 "created_at": row["created_at"], "attempts": row["attempts"], "next_try": next_try,
                 "failures": row["conv_failures"], "last_failure": failure,
-                "deferred": row["conversation_id"] in self._deferred}
+                "deferred": row["conversation_id"] in self._deferred,
+                "cancel_reason": row["cancel_reason"], "canceled_by": row["canceled_by"]}
 
     async def _wake_list(self, req: dict) -> dict:
         states = req.get("states")
@@ -406,10 +407,12 @@ class Gateway:
         return {"wakes": [self._wake_view(r, now) for r in rows]}
 
     async def _wake_cancel(self, req: dict) -> dict:
+        """An operator cancels any pending wake; an agent, naming itself as ``agent``, only its own."""
         wake_id = req.get("id")
+        agent = _text(req, "agent", required=False)
         with transaction(self.ctx.conn):
             wake.cancel(self.ctx.conn, wake_id if isinstance(wake_id, int) and not isinstance(wake_id, bool) else None,
-                        self.clock())
+                        self.clock(), reason=req.get("reason"), by=agent or "operator", agent=agent)
         return {"id": wake_id, "state": wake.CANCELED}
 
     async def _agent_reload(self, req: dict) -> dict:

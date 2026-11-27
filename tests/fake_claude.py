@@ -53,15 +53,28 @@ def plugin_command(args: list) -> int:
     return 2
 
 
-def run_hooks(event: str, plugin_dirs: list, session: str, source: str) -> list:
-    contexts = []
+def _hook_sources(plugin_dirs: list) -> list:
+    """Where hooks come from, as Claude Code reads them: the settings file in the configuration
+    directory, then each plugin directory's hooks file."""
+    sources = []
+    config = os.environ.get("CLAUDE_CONFIG_DIR")
+    if config and (Path(config) / "settings.json").exists():
+        sources.append((None, json.loads((Path(config) / "settings.json").read_text()).get("hooks", {})))
     for directory in plugin_dirs:
         hooks_file = Path(directory) / "hooks" / "hooks.json"
-        if not hooks_file.exists():
-            continue
-        for group in json.loads(hooks_file.read_text())["hooks"].get(event, []):
+        if hooks_file.exists():
+            sources.append((directory, json.loads(hooks_file.read_text())["hooks"]))
+    return sources
+
+
+def run_hooks(event: str, plugin_dirs: list, session: str, source: str) -> list:
+    contexts = []
+    for directory, hooks in _hook_sources(plugin_dirs):
+        for group in hooks.get(event, []):
             for hook in group["hooks"]:
-                env = dict(os.environ, CLAUDE_PLUGIN_ROOT=str(directory), CLAUDE_PID=str(os.getpid()))
+                env = dict(os.environ, CLAUDE_PID=str(os.getpid()))
+                if directory is not None:
+                    env["CLAUDE_PLUGIN_ROOT"] = str(directory)
                 payload = {"session_id": session, "cwd": os.getcwd(), "hook_event_name": event, "source": source}
                 done = subprocess.run(hook["command"], shell=True, input=json.dumps(payload), env=env,
                                       capture_output=True, text=True)

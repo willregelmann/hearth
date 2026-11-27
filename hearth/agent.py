@@ -6,7 +6,9 @@ removing one takes it away, and the gateway reads it from there, so the files ar
 import json
 import os
 import re
+import shlex
 import subprocess
+import tempfile
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -69,6 +71,7 @@ class Agent:
         env.update(CLAUDE_CONFIG_DIR=str(self.config_dir), HEARTH_HOME=str(home.root), HEARTH_AGENT=self.name,
                    HEARTH_PYTHON=sys.executable)
         env.pop("HEARTH_TURN", None)
+        env.pop("HEARTH_TURN_ID", None)
         if turn:
             env["HEARTH_TURN"] = "1"
         return env
@@ -294,3 +297,46 @@ def plugin_settings(agent: Agent, installed: list) -> str:
     installed plugin is switched off, and a declared one that was switched off is switched on."""
     declared = {p.id for p in agent.plugins if p.id}
     return json.dumps({"enabledPlugins": {p["id"]: p["id"] in declared for p in installed}}, sort_keys=True)
+
+
+SESSION_EVENTS = {"SessionStart": "session-start", "SessionEnd": "session-end"}
+RECORD_ONLY = "--record-only"
+
+
+def _is_hearths(hook: dict) -> bool:
+    command = hook.get("command", "") if isinstance(hook, dict) else ""
+    return " -m hearth hook session-" in command and RECORD_ONLY in command
+
+
+def write_session_hooks(agent: Agent, home: Home, python: str = sys.executable) -> Path:
+    """Put Hearth's record-only session hooks into the agent's configuration directory, so that a
+    session started there without Hearth is still recorded (docs/primitives/CONVERSATION.md). Only
+    Hearth's own entries are replaced; everything else in the settings file is left as it was."""
+    path = agent.config_dir / "settings.json"
+    try:
+        settings = json.loads(path.read_text()) if path.exists() else {}
+    except (OSError, ValueError) as exc:
+        raise ManifestError(f"{path}: can't be read as settings, so Hearth's session hooks were not written: {exc}") from exc
+    if not isinstance(settings, dict) or not isinstance(settings.get("hooks", {}), dict):
+        raise ManifestError(f"{path}: not a settings object with a hooks object, so Hearth's session hooks were not written")
+    hooks = settings.setdefault("hooks", {})
+    prefix = f"HEARTH_HOME={shlex.quote(str(home.root))} HEARTH_AGENT={shlex.quote(agent.name)} {shlex.quote(python)}"
+    for event, name in SESSION_EVENTS.items():
+        groups = hooks.get(event, [])
+        if not isinstance(groups, list):
+            raise ManifestError(f"{path}: hooks.{event} is not a list, so Hearth's session hooks were not written")
+        kept = []
+        for group in groups:
+            inner = group.get("hooks") if isinstance(group, dict) else None
+            if isinstance(inner, list) and inner and all(_is_hearths(h) for h in inner):
+                continue
+            kept.append(group)
+        kept.append({"hooks": [{"type": "command", "command": f"{prefix} -m hearth hook {name} {RECORD_ONLY}"}]})
+        hooks[event] = kept
+    agent.config_dir.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=agent.config_dir, prefix=".settings-")
+    with os.fdopen(fd, "w") as f:
+        json.dump(settings, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+    return path

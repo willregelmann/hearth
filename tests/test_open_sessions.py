@@ -122,3 +122,72 @@ def test_the_hooks_never_fail_a_session_even_when_given_nonsense(home):
         done = hearth_cli(home, "hook", event, stdin="this is not json")
         assert done.returncode == 0 and done.stdout == ""
     assert list(home.sessions.glob("*.json")) == []
+
+
+# Sessions Hearth didn't start, and processes that have exited (docs/primitives/CONVERSATION.md) -------
+
+async def test_a_session_started_without_hearth_in_the_agents_configuration_directory_defers_a_wake(
+        home, fake, root, start_gateway):
+    import os
+    agent = register(home, "ash", root)
+    installed = hearth_cli(home, "agent", "install", "ash", env={"HEARTH_CLAUDE": str(fake.path)})
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    await start_gateway()
+    session = str(uuid.uuid4())
+    fake.know_session(session)
+
+    fake.hold()
+    plain = subprocess.Popen([str(fake.path), "--resume", session, "typing by hand"],
+                             env={k: v for k, v in dict(os.environ, CLAUDE_CONFIG_DIR=str(agent.config_dir)).items()
+                                  if not k.startswith("HEARTH_")},
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        await wait_until(lambda: list(home.sessions.glob(f"{session}.*.json")),
+                         what="the plain session to be recorded by the configuration directory's hook")
+        assert fake.starts[0]["contexts"] == [], "the record-only hook told the session something"
+        await push(home, "ash", session, note="while it was open by hand")
+        await quiet(0.6)
+        assert [s for s in fake.starts if s["turn"]] == [], "a turn resumed a session someone had open"
+    finally:
+        fake.release()
+        plain.wait(timeout=30)
+    await wait_until(lambda: [s for s in fake.starts if s["turn"]], what="the wake to run once the session ended")
+
+
+def test_a_process_that_has_exited_but_not_been_reaped_is_not_an_open_session(root):
+    import time
+    from hearth import proc
+    sessions = root / "sessions"
+    zombie = subprocess.Popen(["sleep", "0.2"])
+    session = str(uuid.uuid4())
+    conversation.record_open(sessions, session, zombie.pid, proc.start_time(zombie.pid), "ash")
+    assert conversation.is_open(sessions, session)
+    time.sleep(0.6)                     # exited, and not waited for: a zombie
+    try:
+        assert not conversation.is_open(sessions, session), "a zombie counted as an open session"
+    finally:
+        zombie.wait()
+
+
+async def test_a_session_that_opens_while_a_turn_is_being_prepared_defers_the_turn(
+        home, fake, root, start_gateway, person, monkeypatch):
+    from hearth import agent as agents
+    register(home, "ash", root)
+    await start_gateway()
+    session = str(uuid.uuid4())
+    fake.know_session(session)
+    real = agents.installed_plugins
+
+    def opens_meanwhile(*args, **kwargs):
+        conversation.record_open(home.sessions, session, person.pid, None, "ash")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(agents, "installed_plugins", opens_meanwhile)
+    await push(home, "ash", session)
+    await quiet(0.6)
+    assert fake.starts == [], "a turn resumed a session that opened while it was being prepared"
+    [pending] = await wakes(home)
+    assert pending["state"] == "pending" and not pending["failures"], "a deferral counted as a failure"
+    monkeypatch.setattr(agents, "installed_plugins", real)
+    conversation.clear_open(home.sessions, session)
+    await wait_until(lambda: len(fake.ends) == 1, what="the wake to run once the session closed")

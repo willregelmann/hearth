@@ -4,12 +4,30 @@ import os
 import signal
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Mapping, Optional, Sequence
 
 
-def start_time(pid: int) -> Optional[str]:
-    """When a process started, as ``ps`` prints it, which both macOS and Linux do the same way.
-    None when there is no such process or ``ps`` can't say."""
+PROC = Path("/proc")
+HAVE_PROC = (PROC / "self" / "stat").exists()
+
+
+def _proc_stat(pid: int) -> Optional[list]:
+    """The fields of ``/proc/<pid>/stat`` after the command name, which may itself hold spaces and
+    parentheses. None when there is no such process."""
+    try:
+        text = (PROC / str(pid) / "stat").read_text()
+    except OSError:
+        return None
+    return text[text.rindex(")") + 2:].split()
+
+
+def _proc_start(pid: int) -> Optional[str]:
+    fields = _proc_stat(pid)
+    return f"proc:{fields[19]}" if fields and len(fields) > 19 else None
+
+
+def _ps_start(pid: int) -> Optional[str]:
     try:
         out = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True,
                              env={**os.environ, "LC_ALL": "C"}, timeout=10)
@@ -18,13 +36,29 @@ def start_time(pid: int) -> Optional[str]:
     return out.stdout.strip() or None
 
 
+def start_time(pid: int) -> Optional[str]:
+    """When a process started, read from ``/proc`` where it exists (tagged ``proc:``) and from ``ps``
+    elsewhere (docs/decisions/0021). None when there is no such process or it can't be read."""
+    return _proc_start(pid) if HAVE_PROC else _ps_start(pid)
+
+
+def _start_like(pid: int, recorded: str) -> Optional[str]:
+    """The start of ``pid``, read the same way ``recorded`` was, so the two can be compared."""
+    return _proc_start(pid) if recorded.startswith("proc:") else _ps_start(pid)
+
+
 def exists(pid: int) -> bool:
+    """Whether a process with this id is alive. One that has exited but not been reaped is not."""
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True
+        pass
+    if HAVE_PROC:
+        fields = _proc_stat(pid)
+        if fields is None or fields[0] in ("Z", "X"):
+            return False
     return True
 
 
@@ -36,8 +70,14 @@ def is_same_process(pid: int, started: Optional[str]) -> bool:
         return False
     if not started:
         return True
-    now = start_time(pid)
+    now = _start_like(pid, started)
     return now is None or now == started
+
+
+def is_recorded_process(pid: int, started: Optional[str]) -> bool:
+    """True only when ``pid`` is alive and provably the process recorded at ``started``: for killing,
+    where a wrong yes would hit an unrelated process."""
+    return bool(started) and exists(pid) and _start_like(pid, started) == started
 
 
 def kill_group(pgid: int) -> None:

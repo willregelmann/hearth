@@ -103,15 +103,28 @@ def recover(conn: sqlite3.Connection) -> int:
     return conn.execute("UPDATE wakes SET state=? WHERE state=?", (PENDING, RUNNING)).rowcount
 
 
-def cancel(conn: sqlite3.Connection, wake_id, now: float) -> None:
-    row = conn.execute("SELECT state FROM wakes WHERE id=?", (wake_id,)).fetchone() if isinstance(wake_id, int) else None
+MAX_REASON = 2000
+
+
+def cancel(conn: sqlite3.Connection, wake_id, now: float, *, reason, by, agent: Optional[str] = None) -> None:
+    """Cancel a pending wake. ``by`` is who cancels it: an agent's name, or "operator". With ``agent``,
+    the wake must be that agent's."""
+    if not isinstance(reason, str) or not reason.strip() or len(reason) > MAX_REASON:
+        raise WakeError(f"a cancel needs a reason: a non-empty string of at most {MAX_REASON} characters")
+    if not isinstance(by, str) or not by:
+        raise WakeError("a cancel needs to say who cancels it")
+    row = (conn.execute("SELECT state, agent FROM wakes WHERE id=?", (wake_id,)).fetchone()
+           if isinstance(wake_id, int) else None)
     if row is None:
         raise WakeError(f"no wake {wake_id}")
+    if agent is not None and row["agent"] != agent:
+        raise WakeError(f"wake {wake_id} is not {agent}'s: an agent cancels only its own wakes")
     if row["state"] == RUNNING:
         raise WakeError(f"wake {wake_id} is running: a turn has it, and it can't be cancelled")
     if row["state"] != PENDING:
         raise WakeError(f"wake {wake_id} is already {row['state']}")
-    conn.execute("UPDATE wakes SET state=?, finished_at=? WHERE id=?", (CANCELED, now, wake_id))
+    conn.execute("UPDATE wakes SET state=?, finished_at=?, cancel_reason=?, canceled_by=? WHERE id=?",
+                 (CANCELED, now, reason, by, wake_id))
 
 
 def forget_old(conn: sqlite3.Connection, now: float) -> int:

@@ -66,13 +66,15 @@ def _settle(ctx: Context, conv_id: int, turn_id: int, outcome: str, detail: str,
     failure of the conversation: the gateway stopped, nothing was wrong with it."""
     with transaction(ctx.conn):
         _finish_turn(ctx, turn_id, outcome, detail, session_id)
-        conversation.record_session(ctx.conn, conv_id, session_id)
+        said = conversation.record_session(ctx.conn, conv_id, session_id)
+        if said:
+            log.warning("turn %d: %s", turn_id, said)
         if outcome == "ok":
             wake.finish(ctx.conn, turn_id, ctx.clock())
             conversation.note_success(ctx.conn, conv_id)
         else:
             wake.release(ctx.conn, turn_id)
-            if outcome != "interrupted":
+            if outcome not in ("interrupted", "deferred"):
                 conversation.note_failure(ctx.conn, conv_id, ctx.clock(), ctx.config.retry_s, ctx.config.retry_max_s)
 
 
@@ -103,7 +105,9 @@ async def deliver(ctx: Context, agent: agents.Agent, conv_id: int) -> None:
     finally:
         ctx.live.pop(conv_id, None)
     _settle(ctx, conv_id, turn_id, outcome, detail, session_id)
-    if outcome == "ok":
+    if outcome == "deferred":
+        log.info("agent %s: turn %d deferred: %s", agent.name, turn_id, detail)
+    elif outcome == "ok":
         log.info("agent %s: turn %d finished (%d wake%s)", agent.name, turn_id, len(wakes), "" if len(wakes) == 1 else "s")
     else:
         after = conversation.get(ctx.conn, conv_id)
@@ -116,10 +120,13 @@ async def _run(ctx: Context, agent: agents.Agent, conv: conversation.Conversatio
                now: float) -> tuple:
     agent.prepare()
     env = agent.environment(ctx.home, turn=True)
+    env["HEARTH_TURN_ID"] = str(turn_id)
     try:
         installed = await asyncio.to_thread(agents.installed_plugins, ctx.claude, env)
     except RuntimeError as exc:
         return "failed", str(exc), None
+    if conv.session_id and conversation.is_open(ctx.home.sessions, conv.session_id):
+        return "deferred", "a live session opened the conversation before the turn could start", None
     missing = [s.declared for s in agents.plugin_states(agent, installed, None) if not s.loaded]
     prompt = compose_prompt(wakes, conv, now, missing)
     cmd = claude.turn_command(ctx.claude, agent, agents.plugin_settings(agent, installed), conv.session_id, prompt)

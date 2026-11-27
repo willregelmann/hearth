@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS wakes (
     attempts INTEGER NOT NULL DEFAULT 0,
     turn_id INTEGER,
     finished_at REAL,
+    cancel_reason TEXT,
+    canceled_by TEXT,
     UNIQUE (agent, source, idem)
 );
 CREATE INDEX IF NOT EXISTS wakes_by_state ON wakes (agent, state, conversation_id);
@@ -72,6 +74,17 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=FULL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(wakes)")}
+    for column in ("cancel_reason", "canceled_by"):
+        if column not in have:
+            conn.execute(f"ALTER TABLE wakes ADD COLUMN {column} TEXT")
+    return conn
+
+
+def connect_readonly(path: Path) -> sqlite3.Connection:
+    """For readers outside the gateway, such as the plugin's hooks: never creates or changes the file."""
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+    conn.row_factory = sqlite3.Row
     return conn
 
 
