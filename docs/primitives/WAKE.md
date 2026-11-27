@@ -12,7 +12,7 @@ stateDiagram-v2
     Pending --> Running: a turn takes it
     Running --> Done: the turn finished
     Running --> Pending: the turn failed or was interrupted
-    Pending --> Canceled: the operator cancels
+    Pending --> Canceled: cancelled, with a reason
 ```
 
 ## Invariants
@@ -24,4 +24,4 @@ stateDiagram-v2
 - **A wake is done only when a turn that was shown it finished successfully.** A failed turn leaves it pending, and it is retried after a delay that doubles with each failure in a row, up to a cap.
 - A turn takes every due wake pending for its conversation and shows them together. Wakes that arrive during a turn run in the next turn, straight after.
 - A wake with a not-before time never runs early. One that runs late says how late.
-- An operator can list wakes and cancel a pending one. A wake that is running is not cancelled, and the refusal says so.
+- An operator, or the agent a wake is for, can list wakes and cancel a pending one. A cancel carries a reason and who cancelled it, both kept with the wake and shown wherever it is listed. A wake that is running is not cancelled, and the refusal says so.

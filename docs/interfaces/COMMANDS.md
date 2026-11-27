@@ -8,9 +8,9 @@ The `hearth` command: what the operator, and the agents themselves, run to run t
 |---|---|
 | Gateway | Runs the gateway in the foreground |
 | Add, remove, list, reload | Registers an agent from a manifest, unregisters it, lists the registered agents, or re-reads a manifest |
-| Install | Installs an agent's declared plugins into its configuration directory, adding the marketplaces its manifest names first |
+| Install | Installs an agent's declared plugins into its configuration directory, adding the marketplaces its manifest names first, and writes Hearth's session hooks there too |
 | Session | Opens an interactive Claude Code session as an agent, with the configuration directory, environment and plugins its turns use |
-| Wake | Raises a wake, lists wakes, or cancels a pending one |
+| Wake | Raises a wake, lists wakes, or cancels a pending one with a reason |
 | Status | Shows [status](STATUS.md) for a person, or as JSON on request |
 
 ## Invariants

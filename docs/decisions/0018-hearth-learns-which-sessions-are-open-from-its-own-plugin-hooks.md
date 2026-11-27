@@ -1,5 +1,7 @@
 # Hearth learns which sessions are open from its own plugin's hooks
 
+The third bullet of the Decision Outcome, that the hooks cover only sessions that load Hearth's plugin, superseded by ADR-0020.
+
 ## Context and Problem Statement
 
 A wake must never resume a conversation a person has open, because that is two writers on one transcript. The previous design learned what was open from another project's session records, and from Linux's `/proc` to find which processes were Claude Code. Neither is available now: Hearth names no other project ([ADR-0015](0015-hearth-names-neither-tapestry-nor-front-desk.md)), and `/proc` does not exist on macOS. How does Hearth know which sessions are open?

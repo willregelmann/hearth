@@ -82,7 +82,7 @@ Wakes that are due for one conversation are shown together to one turn. If the t
 hearth wake --agent ash --conversation build-watch --source ci --key run-4411 --note "the build went red"
 hearth wake --agent ash --conversation build-watch --in 30m --note "look at the build again"
 hearth wake list          # pending and running; --all for the rest
-hearth wake cancel 12
+hearth wake cancel 12 --reason 'the deploy was rolled back'
 ```
 
 The gateway listens on `gateway.sock` in Hearth's home, which only its owner can read or write. The protocol is one JSON request and one JSON response, each ended by a newline, so anything on the machine can push without the `hearth` command:
@@ -111,7 +111,7 @@ The plugin ships inside the package and is passed to every session Hearth launch
 - When a session starts, a hook records it as open (unless it is a turn the gateway is running) and tells the agent that Hearth exists, its agent name, this conversation's id, and how to wait: set a wake for this conversation and end the turn. When the session ends, the hook clears the record. A record counts only while its process is alive.
 - `/hearth:wake` sets a wake for this conversation, `/hearth:status` shows status, and `/hearth:agents` lists the agents. Each runs the `hearth` command.
 
-Hearth defers a wake for a conversation that a live session has open, and runs it once the session closes. It knows about sessions that load the plugin, which is every session Hearth launches, including `hearth session ash`, which opens an interactive Claude Code session as the agent with the configuration directory, environment and plugins its turns use. A session started with plain `claude` is invisible to it.
+Hearth defers a wake for a conversation that a live session has open, and runs it once the session closes. It knows about sessions that load the plugin, which is every session Hearth launches, including `hearth session ash`, which opens an interactive Claude Code session as the agent with the configuration directory, environment and plugins its turns use. `hearth agent install` also writes Hearth's session hooks into the agent's configuration directory, so a session started there with plain `claude` is seen too; a configuration directory that hasn't been installed since this release isn't.
 
 ## Status
 
