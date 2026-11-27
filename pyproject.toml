@@ -12,7 +12,7 @@ dependencies = []
 [project.optional-dependencies]
 # Telemetry (docs/interfaces/TELEMETRY.md) is optional: without these, Hearth exports nothing.
 otel = ["opentelemetry-sdk>=1.30,<2", "opentelemetry-exporter-otlp-proto-http>=1.30,<2"]
-dev = ["pytest>=9.1.1,<10", "pytest-asyncio>=1.4.1,<2", "opentelemetry-sdk>=1.30,<2",
+dev = ["pytest>=9.2.0,<10", "pytest-asyncio>=1.4.1,<2", "opentelemetry-sdk>=1.30,<2",
        "opentelemetry-exporter-otlp-proto-http>=1.30,<2"]
 
 [project.scripts]
