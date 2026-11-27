@@ -20,6 +20,7 @@ from hearth import claude, conversation, deliver, poll, proc, wake
 from hearth.context import Context, log
 from hearth.db import connect, transaction
 from hearth.home import Config, Home
+from hearth.telemetry import Telemetry
 
 MAX_REQUEST = 1 << 20
 REQUEST_TIMEOUT_S = 10.0
@@ -62,7 +63,7 @@ def _text(req: dict, field: str, required: bool = True) -> Optional[str]:
 
 class Gateway:
     def __init__(self, home: Home, *, clock: Callable[[], float] = time.time, config: Optional[Config] = None,
-                 claude_path: Optional[str] = None):
+                 claude_path: Optional[str] = None, telemetry: Optional[Telemetry] = None):
         self.home = home
         self.clock = clock
         self.config = config or home.config()
@@ -81,13 +82,18 @@ class Gateway:
         self._lock_fd: Optional[int] = None
         self._last_prune = 0.0
         self.ctx: Optional[Context] = None
+        self.telemetry = telemetry
 
     async def start(self) -> None:
         self.home.ensure()
         self._lock()
         try:
             conn = connect(self.home.db)
-            self.ctx = Context(self.home, conn, self.clock, self.config, self.claude, self._poke.set)
+            if self.telemetry is None:
+                self.telemetry = Telemetry.from_env()
+            self.ctx = Context(self.home, conn, self.clock, self.config, self.claude, self._poke.set,
+                               telemetry=self.telemetry)
+            self.telemetry.watch(self._telemetry_state)
             self._recover()
             self.started_at = self.clock()
             await self.reload_all()
@@ -118,6 +124,9 @@ class Gateway:
         if self.ctx is not None:
             self.ctx.conn.close()
             self.ctx = None
+        if self.telemetry is not None:
+            self.telemetry.watch(None)      # the database is closed: a last collection measures nothing
+            self.telemetry.shutdown()
         self.home.socket.unlink(missing_ok=True)
         self._release()
         log.info("gateway stopped")
@@ -361,13 +370,20 @@ class Gateway:
         delay, not_before = _number(req, "delay"), _number(req, "not_before")
         if delay is not None and not_before is not None:
             raise RequestError("give a delay or a not_before time, not both")
+        parent = req.get("traceparent")
+        if parent is not None and (not isinstance(parent, str) or not wake.TRACEPARENT_RE.match(parent)):
+            raise RequestError("traceparent must be a W3C trace context, such as 00-<32 hex>-<16 hex>-01")
         now = self.clock()
         if delay is not None:
             not_before = now + delay
         with transaction(self.ctx.conn):
             conv = conversation.resolve(self.ctx.conn, agent, _text(req, "conversation"))
+            span = self.ctx.telemetry.wake(agent=agent, source=source, route="push", conversation=conv.label,
+                                           parent=parent)
             wake_id, duplicate = wake.accept(self.ctx.conn, agent=agent, conversation_id=conv.id, source=source,
-                                             key=key, idem=f"push:{key}", note=note, not_before=not_before, now=now)
+                                             key=key, idem=f"push:{key}", note=note, not_before=not_before, now=now,
+                                             traceparent=span.traceparent)
+        span.accepted(wake_id, duplicate)
         state = self.ctx.conn.execute("SELECT state FROM wakes WHERE id=?", (wake_id,)).fetchone()["state"]
         if not duplicate:
             self._poke.set()
@@ -446,7 +462,47 @@ class Gateway:
         view = []
         for name in sorted(set(self.agents) | set(self.broken)):
             view.append(self._agent_status(name, now))
-        return {"started": self.started_at, "now": now, "pid": os.getpid(), "agents": view}
+        return {"started": self.started_at, "now": now, "pid": os.getpid(), "agents": view,
+                "telemetry": self.telemetry.report() if self.telemetry else None}
+
+    def _telemetry_state(self) -> dict:
+        """What the wake and session measurements read, on the SDK's own thread: from a connection of its
+        own, never the gateway's."""
+        from hearth.db import connect_readonly
+        now = self.clock()
+        deferred = set(self._deferred)
+        conn = connect_readonly(self.home.db)
+        try:
+            rows = conn.execute("SELECT w.agent, w.state, w.not_before, w.conversation_id, c.retry_at FROM wakes w "
+                                "JOIN conversations c ON c.id = w.conversation_id "
+                                "WHERE w.state IN ('pending', 'running')").fetchall()
+            belongs = {r[0]: r[1] for r in conn.execute(
+                "SELECT session_id, agent FROM conversations WHERE session_id IS NOT NULL")}
+        finally:
+            conn.close()
+        waiting: dict = {}
+        for agent in self.agents:
+            for why in ("due", "not_due", "deferred", "retrying", "running"):
+                waiting[(agent, why)] = 0
+        for r in rows:
+            if r["state"] == "running":
+                why = "running"
+            elif r["not_before"] is not None and r["not_before"] > now:
+                why = "not_due"
+            elif r["retry_at"] is not None and r["retry_at"] > now:
+                why = "retrying"
+            elif r["conversation_id"] in deferred:
+                why = "deferred"
+            else:
+                why = "due"
+            waiting[(r["agent"], why)] = waiting.get((r["agent"], why), 0) + 1
+        sessions: dict = {agent: 0 for agent in self.agents}
+        for s in conversation.open_sessions(self.home.sessions):
+            agent = s.agent or belongs.get(s.session_id.lower())
+            if agent:
+                sessions[agent] = sessions.get(agent, 0) + 1
+        return {"waiting": [(a, why, n) for (a, why), n in waiting.items()],
+                "sessions": [(a, n) for a, n in sessions.items()]}
 
     def _agent_status(self, name: str, now: float) -> dict:
         conn = self.ctx.conn

@@ -261,6 +261,8 @@ def cmd_wake(args, home: Home) -> int:
                "key": args.key or str(uuid.uuid4())}
     if args.note:
         payload["note"] = args.note
+    if os.environ.get("TRACEPARENT"):
+        payload["traceparent"] = os.environ["TRACEPARENT"]
     if args.delay and args.at:
         raise CommandError("give --in or --at, not both")
     if args.delay:

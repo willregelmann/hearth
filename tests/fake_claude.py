@@ -137,7 +137,9 @@ def main(argv: list) -> int:
          "cwd": os.getcwd(), "model": options.get("--model"), "settings": options.get("--settings"),
          "config_dir": os.environ.get("CLAUDE_CONFIG_DIR"), "plugin_dirs": options["--plugin-dir"],
          "prompt": prompt, "agent": os.environ.get("HEARTH_AGENT"), "turn": os.environ.get("HEARTH_TURN"),
-         "foo": os.environ.get("FOO"), "contexts": contexts, "argv": argv})
+         "foo": os.environ.get("FOO"), "contexts": contexts, "argv": argv,
+         "traceparent": os.environ.get("TRACEPARENT"), "otel_resource": os.environ.get("OTEL_RESOURCE_ATTRIBUTES"),
+         "otel_service": os.environ.get("OTEL_SERVICE_NAME")})
     if mode.get("child"):
         child = subprocess.Popen(["sleep", "60"])
         (CTRL / "child.pid").write_text(str(child.pid))
