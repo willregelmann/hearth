@@ -6,7 +6,7 @@ What Hearth asks of Claude Code, the one program it wraps and the only product t
 
 | Direction | What crosses |
 |---|---|
-| Out | One non-interactive run per turn, resumed by session id when the conversation has one, with the agent's configuration directory, working directory, environment, model and plugin directories, and Hearth's own plugin |
+| Out | One non-interactive run per turn, resumed by session id when the conversation has one, with the agent's configuration directory, working directory, environment, model, permission mode and plugin directories, and Hearth's own plugin |
 | Out | The turn's identity for Claude Code's own [telemetry](TELEMETRY.md): the agent, the conversation and the turn as resource attributes, and the turn's trace context |
 | Out | Nothing on standard input |
 | In | A result that reports the session id and whether the run failed |
