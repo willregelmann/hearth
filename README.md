@@ -140,3 +140,30 @@ uv run --extra dev pytest
 ```
 
 The tests fake only the `claude` program and the clock. Everything else is the real gateway, its real socket and its real command.
+
+## Telemetry
+
+Install `hearth[otel]` and set the standard OpenTelemetry variables; with none set, Hearth exports nothing.
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318   # OTLP over HTTP/protobuf
+OTEL_SERVICE_NAME=hearth                            # the gateway's own name (default "hearth")
+CLAUDE_CODE_ENABLE_TELEMETRY=1                      # and Claude Code's, for what happens inside a turn
+```
+
+**Spans:**
+- `hearth.wake` when a wake is accepted, a child of the raiser's trace if the push carried one (`hearth wake` sends any `TRACEPARENT` it runs under);
+- `hearth.turn` for each turn, linked to every wake it delivered, even across a restart;
+- `hearth.check` for each check run.
+
+**Measurements:**
+- `hearth.wakes.accepted`;
+- `hearth.wakes.waiting`, by why each waits: `due`, `not_due`, `deferred`, `retrying` or `running`;
+- `hearth.wake.delay`;
+- `hearth.turns` and `hearth.turn.duration`, by outcome;
+- `hearth.checks`;
+- `hearth.sessions.open`.
+
+**Joining Claude Code's telemetry:** each turn's Claude Code gets the turn's `TRACEPARENT`, plus `hearth.agent`, `hearth.conversation` and `hearth.turn.id` as resource attributes.
+
+**Privacy:** no prompt, reply, wake note or check output is ever exported. `hearth status` shows which signals are on, and any problem.

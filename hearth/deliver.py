@@ -6,7 +6,7 @@ import time
 from typing import Optional
 
 from hearth import agent as agents
-from hearth import claude, conversation, proc, wake
+from hearth import claude, conversation, proc, telemetry, wake
 from hearth.context import Context, LiveTurn, log
 from hearth.db import transaction
 
@@ -94,10 +94,14 @@ async def deliver(ctx: Context, agent: agents.Agent, conv_id: int) -> None:
     if not wakes:
         return
     ctx.live[conv_id] = LiveTurn(agent.name, conv_id, conv.label, sources, now)
+    span = ctx.telemetry.turn(agent=agent.name, conversation=conv.label, session_id=conv.session_id, turn_id=turn_id,
+                              wakes=[(w.source, w.traceparent, w.not_before or w.created_at, w.attempts) for w in wakes],
+                              started=now)
     try:
-        outcome, detail, session_id = await _run(ctx, agent, conv, wakes, turn_id, now)
+        outcome, detail, session_id = await _run(ctx, agent, conv, wakes, turn_id, now, span.traceparent)
     except asyncio.CancelledError:
         _settle(ctx, conv_id, turn_id, "interrupted", "the gateway stopped during the turn", None)
+        span.end("interrupted", "the gateway stopped during the turn", None, ctx.clock() - now)
         raise
     except Exception as exc:
         log.exception("turn %d for %s could not be run", turn_id, agent.name)
@@ -105,6 +109,7 @@ async def deliver(ctx: Context, agent: agents.Agent, conv_id: int) -> None:
     finally:
         ctx.live.pop(conv_id, None)
     _settle(ctx, conv_id, turn_id, outcome, detail, session_id)
+    span.end(outcome, detail, session_id, ctx.clock() - now)
     if outcome == "deferred":
         log.info("agent %s: turn %d deferred: %s", agent.name, turn_id, detail)
     elif outcome == "ok":
@@ -117,10 +122,12 @@ async def deliver(ctx: Context, agent: agents.Agent, conv_id: int) -> None:
 
 
 async def _run(ctx: Context, agent: agents.Agent, conv: conversation.Conversation, wakes: list, turn_id: int,
-               now: float) -> tuple:
+               now: float, traceparent: Optional[str] = None) -> tuple:
     agent.prepare()
     env = agent.environment(ctx.home, turn=True)
     env["HEARTH_TURN_ID"] = str(turn_id)
+    telemetry.claude_env(env, agent=agent.name, conversation=conv.label, turn_id=turn_id, traceparent=traceparent,
+                         gateway_service=ctx.telemetry.service)
     try:
         installed = await asyncio.to_thread(agents.installed_plugins, ctx.claude, env)
     except RuntimeError as exc:

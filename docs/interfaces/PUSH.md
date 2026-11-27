@@ -8,7 +8,7 @@ The protocol is newline-delimited JSON: one request, one response.
 
 | Request | What it does |
 |---|---|
-| Raise | Accepts a wake for an agent and a conversation, with a source label, a key, an optional note, and an optional delay or not-before time |
+| Raise | Accepts a wake for an agent and a conversation, with a source label, a key, an optional note, and an optional delay or not-before time, and optionally the trace context it was raised in |
 | List | Returns wakes, filtered by agent or state |
 | Cancel | Cancels a pending wake |
 | Agents | Adds, removes or reloads an agent without touching the others |
