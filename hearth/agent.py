@@ -35,10 +35,22 @@ class Plugin:
     agent's configuration directory."""
     dir: Optional[Path] = None
     id: Optional[str] = None
+    options: tuple = ()          # (name, value) pairs the manifest gives the plugin's userConfig
 
     @property
     def label(self) -> str:
         return self.id if self.id else str(self.dir)
+
+    def config_id(self) -> Optional[str]:
+        """The id Claude Code keeps this plugin's options under: its own id, or for a directory loaded
+        with --plugin-dir, the name in its plugin.json with "@inline". None when that can't be read."""
+        if self.id:
+            return self.id
+        try:
+            name = json.loads((self.dir / ".claude-plugin" / "plugin.json").read_text()).get("name")
+        except (OSError, ValueError, AttributeError):
+            return None
+        return f"{name}@inline" if isinstance(name, str) and name else None
 
 
 @dataclass(frozen=True)
@@ -159,15 +171,20 @@ def parse(name: str, path: Path, text: str) -> Agent:
 
     plugins = []
     for entry in _tables(doc, "plugin"):
-        if set(entry) not in ({"dir"}, {"id"}):
-            raise ManifestError("each [[plugin]] needs exactly one of dir or id")
+        options = entry.get("options", {})
+        if (set(entry) - {"options"}) not in ({"dir"}, {"id"}):
+            raise ManifestError("each [[plugin]] needs exactly one of dir or id, and may have options")
+        if not isinstance(options, dict) or not all(isinstance(k, str) and isinstance(v, str) and "\n" not in v
+                                                    for k, v in options.items()):
+            raise ManifestError("a [[plugin]]'s options must be a table of single-line strings")
+        options = tuple(sorted(options.items()))
         if "dir" in entry:
-            plugins.append(Plugin(dir=_path(entry["dir"], here, "plugin dir")))
+            plugins.append(Plugin(dir=_path(entry["dir"], here, "plugin dir"), options=options))
         else:
             ident = entry["id"]
             if not isinstance(ident, str) or ident.count("@") != 1 or ident.startswith("@") or ident.endswith("@"):
                 raise ManifestError(f"plugin id {ident!r} must look like name@marketplace")
-            plugins.append(Plugin(id=ident))
+            plugins.append(Plugin(id=ident, options=options))
 
     marketplaces = []
     for entry in _tables(doc, "marketplace"):

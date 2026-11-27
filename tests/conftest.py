@@ -53,6 +53,9 @@ class FakeClaude:
         (self.dir / "sessions").mkdir(exist_ok=True)
         (self.dir / "sessions" / session_id).touch()
 
+    def refuse_configure(self, *ids: str) -> None:
+        (self.dir / "unconfigurable").write_text("\n".join(ids))
+
     def refuse_install(self, *ids: str) -> None:
         (self.dir / "unknown-plugins").write_text("\n".join(ids))
 
