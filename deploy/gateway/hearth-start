@@ -1,0 +1,19 @@
+#!/bin/sh
+# Start the gateway for the one agent this container is. The agent's manifest comes from the
+# deployment at /etc/hearth/agent.toml; Hearth's registry is its files, so the manifest is put in
+# place whole on every start, and Hearth's own settings likewise from /etc/hearth/config.toml.
+set -eu
+: "${HEARTH_AGENT:?set HEARTH_AGENT to the agent this container runs}"
+dir="$HEARTH_HOME/agents/$HEARTH_AGENT"
+mkdir -p "$dir" "$CLAUDE_CONFIG_DIR"
+chmod 700 "$HEARTH_HOME"
+cp /etc/hearth/agent.toml "$dir/agent.toml.next"
+mv "$dir/agent.toml.next" "$dir/agent.toml"
+if [ -f /etc/hearth/config.toml ]; then
+  cp /etc/hearth/config.toml "$HEARTH_HOME/config.toml.next"
+  mv "$HEARTH_HOME/config.toml.next" "$HEARTH_HOME/config.toml"
+fi
+# Install declared plugins and Hearth's session hooks into the agent's configuration directory.
+# A failure here is reported, and the gateway still starts: status shows what didn't load.
+hearth agent install "$HEARTH_AGENT" || echo "hearth-start: install reported problems (above); starting anyway" >&2
+exec hearth gateway

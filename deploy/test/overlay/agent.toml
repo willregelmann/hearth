@@ -1,0 +1,2 @@
+config_dir = "/home/agent/claude"
+turn_timeout = 600

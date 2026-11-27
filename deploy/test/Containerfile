@@ -1,0 +1,7 @@
+# The gateway image with the test suite's stand-in for Claude Code, for the end-to-end run on kind.
+ARG BASE=hearth-gateway:e2e
+FROM ${BASE}
+USER root
+COPY tests/fake_claude.py /opt/fake/fake_claude.py
+RUN printf '#!/bin/sh\nmkdir -p "$FAKE_CLAUDE_DIR"\nexec python /opt/fake/fake_claude.py "$@"\n' > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude
+USER 10001

@@ -1,0 +1,36 @@
+# Hearth's gateway for one agent, as a container: Hearth, a pinned Claude Code, and an init that
+# reaps children. Nothing here knows which plugins an agent uses; an image built FROM this one adds
+# them. Build from the repository root:
+#   docker build -f deploy/gateway/Containerfile -t hearth-gateway .
+FROM python:3.12-slim
+
+ARG CLAUDE_VERSION=2.1.331
+# 0 leaves Claude Code out, for tests that put a stand-in at HEARTH_CLAUDE.
+ARG INSTALL_CLAUDE=1
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini ca-certificates curl git bash procps \
+ && rm -rf /var/lib/apt/lists/*
+
+# Claude Code's native installer writes under $HOME, which at run time is the agent's volume, so it
+# is installed into a throwaway home and the binary copied out.
+RUN if [ "$INSTALL_CLAUDE" = "1" ]; then \
+      HOME=/tmp/claude-install bash -c 'curl -fsSL https://claude.ai/install.sh | bash -s "$0"' "$CLAUDE_VERSION" \
+      && cp "$(readlink -f /tmp/claude-install/.local/bin/claude)" /usr/local/bin/claude \
+      && rm -rf /tmp/claude-install \
+      && claude --version; \
+    fi
+
+COPY pyproject.toml README.md /src/hearth/
+COPY hearth /src/hearth/hearth
+RUN pip install --no-cache-dir /src/hearth && rm -rf /src/hearth
+COPY deploy/gateway/hearth-start /usr/local/bin/hearth-start
+
+RUN useradd --uid 10001 --user-group --home-dir /home/agent --no-create-home agent
+ENV HOME=/home/agent \
+    HEARTH_HOME=/home/agent/hearth \
+    CLAUDE_CONFIG_DIR=/home/agent/claude \
+    PYTHONUNBUFFERED=1
+USER 10001
+WORKDIR /home/agent
+ENTRYPOINT ["tini", "--", "hearth-start"]
