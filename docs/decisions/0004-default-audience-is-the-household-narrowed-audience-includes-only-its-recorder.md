@@ -1,5 +1,7 @@
 # A fact's default audience is its household, and a narrowed audience includes only its recorder
 
+Superseded by ADR-0014.
+
 ## Context and Problem Statement
 
 Round 1 left open whether privacy in a household is attribution or isolation (R2-c). The answer has two parts: who told the agent a fact, and who may hear it. Two texts were then agreed in different conversations and read as contradicting each other. One set the default audience to the household; the other set it to "the people plus the owning agent". Which default does a fact get, and who is inside a narrowed audience?

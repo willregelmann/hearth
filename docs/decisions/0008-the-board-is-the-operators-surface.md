@@ -1,5 +1,7 @@
 # The board is the operator's surface, and the household never has to check it
 
+Superseded by ADR-0014.
+
 ## Context and Problem Statement
 
 What no agent can deliver, and what the outside check finds, has to end up where a person sees it. The first wording said "the one surface a human checks". In a household that is true of the operator, Will, but not of everyone: Britta will never check a board (Wren). Who must check the board?

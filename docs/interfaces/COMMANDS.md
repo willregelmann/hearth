@@ -1,21 +1,23 @@
 # Commands
 
-What an operator with root runs on the host to make, check, move and remove agents' [homes](../primitives/HOME.md). On the other side is a person administering the host.
+The `hearth` command: what the operator, and the agents themselves, run to run the gateway and to work with agents and wakes. On the other side is a person at a terminal, a script, or an agent using its shell.
 
 ## What passes
 
 | Command | What it does |
 |---|---|
-| Provision | Creates an agent's user and home |
-| Check | Runs the faculty check for an agent, as that agent |
-| Move | Starts or aborts a [move](../capabilities/MOVE.md) |
-| Lend and revoke | Declares or revokes a loan to an agent |
-| Manifest | Changes which plugins an agent's manifest declares |
+| Gateway | Runs the gateway in the foreground |
+| Add, remove, list, reload | Registers an agent from a manifest, unregisters it, lists the registered agents, or re-reads a manifest |
+| Install | Installs an agent's declared plugins into its configuration directory, adding the marketplaces its manifest names first, and writes Hearth's session hooks there too |
+| Session | Opens an interactive Claude Code session as an agent, with the configuration directory, environment and plugins its turns use |
+| Wake | Raises a wake, lists wakes, or cancels a pending one with a reason |
+| Status | Shows [status](STATUS.md) for a person, or as JSON on request |
 
 ## Invariants
 
-- **Inside a tenant's home, root neither reads nor writes.** Root acts only on the home directory itself. Anything Hearth does inside the home, it does as the tenant.
-- **Every command's action on a home is shown to that agent at its next [wake](../capabilities/WAKE.md).**
-- A command that can't complete says so and leaves the home as it found it, or says exactly what it left changed.
-- Provisioning never adopts what's already at a would-be home. If the user doesn't exist but the path does, it refuses.
-- A command that checks an agent runs as that agent, and refuses to run as root.
+- **An interactive session opened as an agent runs exactly as that agent's turns do: same configuration directory, working directory, environment and plugins.**
+- Registering, removing and reloading work whether or not the gateway is running, and when it is running they take effect without a restart.
+- A command that can't complete says so and exits non-zero. It never reports success for something it did not do.
+- Install reports each declared plugin it could not install, and changes no plugin the manifest does not declare.
+- A wake raised with no conversation named goes to the conversation the caller is in, when it is in one, and is refused otherwise.
+- No command needs more privilege than the gateway's own user.

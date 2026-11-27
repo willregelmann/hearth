@@ -1,22 +1,23 @@
 # Status
 
-What each agent's running process reports about itself to something outside it: the [board](BOARD.md) and [Watch](../capabilities/WATCH.md). On the other side is whatever serves the board. Status is the agent's view of itself running, from its [home](../primitives/HOME.md), shown outside.
+What the gateway reports about itself and its [agents](../primitives/AGENT.md), to an operator or a script, over the same socket as [push](PUSH.md). Status is read-only.
 
 ## What passes
 
 | Report | What it shows |
 |---|---|
-| Started | When the agent's process last started, and whether the agent has been shown that restart yet |
-| Live turns | Which of the agent's turns are running, and which [thread](../primitives/THREAD.md) each is in |
-| Faculties | Which declared faculties are present, and which are absent |
-| Pending wakes | [Wakes](../capabilities/WAKE.md) waiting to run, with any that failed and when each is tried again |
-| Last sweep | The sweep's own record of finishing |
-| Recent turns | What started each recent turn and how it ended, without what was said in it |
+| Started | When the gateway started |
+| Plugins | Per agent, each declared plugin and whether it loaded, with the reason when it did not |
+| Checks | Per agent, each [check](CHECKS.md) with when it last ran and its last failure, if any |
+| Live turns | Per agent, which turns are running and in which conversation |
+| Open sessions | Per agent, the sessions a person has open |
+| Wakes | Per agent, the pending [wakes](../primitives/WAKE.md), including those that failed and those deferred, with when each is tried next |
+| Recent turns | Per agent, what started each recent turn and how it ended, without what was said in it |
 
 ## Invariants
 
-- **Status reports. It never starts a turn, sends a message or changes anything in the home.** Whatever is meant for the agent's attention reaches it on a [channel](CHANNELS.md).
-- **The agent runs the same whether or not anything reads its status.** Status is served by the agent's own process, as the agent, and nothing the agent does waits on a reader.
-- Status never shows what the agent remembers or what was said in a thread, and never quotes a fact outside its audience.
-- No other agent can read an agent's status.
-- What's read here is the agent's own account. It can't change what the board shows about another agent, or about the board itself.
+- **Status reports. It never starts a turn, raises a wake, or changes anything.**
+- **Whatever Hearth is holding back, it says why: a conversation that is deferred, a wake that failed, a plugin that did not load, a check that failed.**
+- Status never shows prompt text or reply text, and never a check's raw output.
+- An agent whose manifest could not be read is listed with the reason, never left out.
+- Nothing the gateway does waits on a reader of status.

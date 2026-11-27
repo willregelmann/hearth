@@ -1,5 +1,7 @@
 # An agent's claim of absence names where it looked
 
+Superseded by ADR-0014.
+
 ## Context and Problem Statement
 
 MEMORY's invariants govern what recall returns: each memory says where it came from and whether it's been checked, and recall that fails says so. None of them covers the opposite case, where the agent says it never did something. "I haven't made one" is a claim about the agent's whole history, and it's usually made from whatever is in the current context, without any search.

@@ -1,5 +1,7 @@
 # Hearth imports Tapestry and Front Desk as pinned packages, and Front Desk carries agent-to-agent traffic now and household chat once it can
 
+Superseded by ADR-0015.
+
 ## Context and Problem Statement
 
 [0005](0005-the-map-names-no-product.md) lists what Hearth uses today. It calls Front Desk the "target" for agent-to-agent traffic and says that's "a goal for Hermes' messaging, not a requirement on Hearth". It says nothing about how Hearth gets Tapestry or Front Desk. Will has since settled both, in two messages to Ash on Google Chat:

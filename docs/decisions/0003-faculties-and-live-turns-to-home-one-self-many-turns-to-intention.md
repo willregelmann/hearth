@@ -1,5 +1,7 @@
 # Faculties and the live-turns view belong to Home, and one-self-many-turns to Intention
 
+Superseded by ADR-0014.
+
 ## Context and Problem Statement
 
 PROPOSAL.md §3 listed four rules that cut across primitives: faculties are known, one self many turns, one directory, and wakes fire in the agent's own home. The map has no place for free-floating rules, so each needs an owner. The live-turns view (which turns of the agent are running) also needed a home.

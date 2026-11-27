@@ -1,5 +1,7 @@
 # The board is served by its own user, and reaches agents only through status and channels
 
+Superseded by ADR-0014.
+
 ## Context and Problem Statement
 
 Will wants a web page to manage the fleet: list the agents on a host and talk to each one (2026-10-29). Something long-running has to serve it, and it has to reach every agent. Who does that process run as, and how does it reach an agent without becoming a second way into the agent's attention?
