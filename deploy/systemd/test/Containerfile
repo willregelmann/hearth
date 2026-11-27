@@ -1,0 +1,12 @@
+# Two agents as two Linux users, with the test suite's stand-in for Claude Code. Build from the
+# repository root: docker build -f deploy/systemd/test/Containerfile -t hearth-users-test .
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends systemd sudo procps && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml README.md /src/
+COPY hearth /src/hearth
+RUN python -m venv /opt/hearth && /opt/hearth/bin/pip install --no-cache-dir /src
+COPY tests/fake_claude.py /opt/fake/fake_claude.py
+RUN printf '#!/bin/sh\nmkdir -p "$FAKE_CLAUDE_DIR"\nexec python3 /opt/fake/fake_claude.py "$@"\n' > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude
+COPY deploy/systemd/hearth@.service /etc/systemd/system/hearth@.service
+COPY deploy/systemd/test/run.sh /run.sh
+CMD ["bash", "/run.sh"]

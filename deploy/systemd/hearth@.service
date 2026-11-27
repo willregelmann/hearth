@@ -1,0 +1,27 @@
+# One agent's gateway, run as that agent's own Linux user. The instance is the agent's name, which
+# is also its user: `systemctl enable --now hearth@wren`. See deploy/systemd/README.md.
+[Unit]
+Description=Hearth gateway for the agent %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+# Hearth keeps its state in ~/.hearth unless HEARTH_HOME says otherwise; systemd sets HOME for User=.
+WorkingDirectory=~
+Environment=PATH=/home/%i/.local/bin:/opt/hearth/bin:/usr/local/bin:/usr/bin:/bin
+# Per-agent settings (OTEL_*, a Claude Code token) go in this file, readable by the agent alone.
+EnvironmentFile=-/home/%i/.config/hearth/env
+ExecStart=/opt/hearth/bin/hearth gateway
+UMask=0077
+# SIGTERM to the gateway first, which lets a running turn finish within its shutdown grace; then
+# everything left in the unit, so no turn outlives its gateway.
+KillMode=mixed
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
