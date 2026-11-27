@@ -212,3 +212,33 @@ def test_an_agent_name_that_could_escape_the_agents_directory_is_refused(home):
     done = hearth_cli(home, "agent", "add", "../evil")
     assert done.returncode == 1 and "not a usable agent name" in done.stderr
     assert not (home.root / "evil").exists()
+
+
+# Permission mode (docs/primitives/AGENT.md) ------------------------------------------------------------
+
+async def test_an_agents_turns_are_permissive_unless_its_manifest_says_otherwise(home, fake, root, start_gateway):
+    from conftest import push, wait_until
+    register(home, "ash", root)
+    register(home, "wren", root, lines=['permission_mode = "acceptEdits"'])
+    await start_gateway()
+    await push(home, "ash", "a")
+    await push(home, "wren", "w")
+    await wait_until(lambda: len(fake.ends) == 2, what="both turns")
+    modes = {s["agent"]: s["argv"][s["argv"].index("--permission-mode") + 1] for s in fake.starts}
+    assert modes == {"ash": "bypassPermissions", "wren": "acceptEdits"}
+
+
+def test_a_session_opened_as_the_agent_runs_with_the_same_permission_mode(home, root):
+    from hearth import claude
+    agent = register(home, "ash", root, lines=['permission_mode = "dontAsk"'])
+    args = claude.launch_args(agent, "{}")
+    assert args[args.index("--permission-mode") + 1] == "dontAsk"
+
+
+def test_a_permission_mode_is_named_once_and_must_be_one_claude_code_accepts(home, root):
+    import pytest
+    from hearth import agent as agents
+    for lines in (['permission_mode = "yolo"'], ['claude_args = ["--permission-mode", "plan"]'],
+                  ['claude_args = ["--dangerously-skip-permissions"]']):
+        with pytest.raises(agents.ManifestError, match="permission"):
+            agents.parse("x", root / "agent.toml", "\n".join(lines))

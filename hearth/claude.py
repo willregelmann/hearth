@@ -21,7 +21,7 @@ def program(configured: Optional[str]) -> str:
 def launch_args(agent: Agent, settings: str) -> list:
     """The options every run for an agent shares, a turn or a session a person opens. The manifest's own
     arguments come first: one of them may take any number of values, and must not reach the prompt."""
-    args = list(agent.claude_args) + ["--settings", settings]
+    args = list(agent.claude_args) + ["--settings", settings, "--permission-mode", agent.permission_mode]
     if agent.model:
         args += ["--model", agent.model]
     for directory in agent.existing_plugin_dirs():

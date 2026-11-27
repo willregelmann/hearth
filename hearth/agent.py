@@ -22,7 +22,12 @@ MANIFEST = "agent.toml"
 DEFAULT_TIMEOUT_S = 1800.0
 DEFAULT_CHECK_TIMEOUT_S = 60.0
 
-_TOP_KEYS = {"workdir", "config_dir", "model", "env", "turn_timeout", "claude_args", "plugin", "marketplace", "check"}
+_TOP_KEYS = {"workdir", "config_dir", "model", "permission_mode", "env", "turn_timeout", "claude_args", "plugin",
+             "marketplace", "check"}
+# What Claude Code accepts for --permission-mode. Turns are permissive unless the manifest names another
+# (docs/primitives/AGENT.md).
+PERMISSION_MODES = ("acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
+DEFAULT_PERMISSION_MODE = "bypassPermissions"
 
 
 class ManifestError(Exception):
@@ -71,6 +76,7 @@ class Agent:
     env: Mapping[str, str] = field(default_factory=dict)
     turn_timeout: float = DEFAULT_TIMEOUT_S
     claude_args: tuple = ()
+    permission_mode: str = DEFAULT_PERMISSION_MODE
     plugins: tuple = ()
     marketplaces: tuple = ()
     checks: tuple = ()
@@ -167,6 +173,12 @@ def parse(name: str, path: Path, text: str) -> Agent:
     claude_args = doc.get("claude_args", [])
     if not isinstance(claude_args, list) or not all(isinstance(a, str) for a in claude_args):
         raise ManifestError("claude_args must be a list of strings")
+    if any(a in ("--permission-mode", "--dangerously-skip-permissions") or a.startswith("--permission-mode=")
+           for a in claude_args):
+        raise ManifestError("name the permission mode with permission_mode, not in claude_args")
+    permission_mode = doc.get("permission_mode", DEFAULT_PERMISSION_MODE)
+    if permission_mode not in PERMISSION_MODES:
+        raise ManifestError(f"permission_mode must be one of {', '.join(PERMISSION_MODES)}")
     timeout = _number(doc["turn_timeout"], "turn_timeout") if "turn_timeout" in doc else DEFAULT_TIMEOUT_S
 
     plugins = []
@@ -216,7 +228,8 @@ def parse(name: str, path: Path, text: str) -> Agent:
         checks.append(Check(cname, command, interval, ctimeout))
 
     return Agent(name=name, manifest=path, workdir=workdir, config_dir=config_dir, model=model, env=env,
-                 turn_timeout=timeout, claude_args=tuple(claude_args), plugins=tuple(plugins),
+                 turn_timeout=timeout, claude_args=tuple(claude_args), permission_mode=permission_mode,
+                 plugins=tuple(plugins),
                  marketplaces=tuple(marketplaces), checks=tuple(checks))
 
 
