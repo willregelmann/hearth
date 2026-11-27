@@ -136,7 +136,7 @@ def main(argv: list) -> int:
     log({"event": "start", "pid": os.getpid(), "t": time.time(), "resume": resume, "session": session,
          "cwd": os.getcwd(), "model": options.get("--model"), "settings": options.get("--settings"),
          "config_dir": os.environ.get("CLAUDE_CONFIG_DIR"), "plugin_dirs": options["--plugin-dir"],
-         "prompt": prompt, "agent": os.environ.get("HEARTH_AGENT"), "turn": os.environ.get("HEARTH_TURN"),
+         "prompt": prompt, "agent": os.environ.get("HEARTH_AGENT"), "uid": os.getuid(), "turn": os.environ.get("HEARTH_TURN"),
          "foo": os.environ.get("FOO"), "contexts": contexts, "argv": argv,
          "traceparent": os.environ.get("TRACEPARENT"), "otel_resource": os.environ.get("OTEL_RESOURCE_ATTRIBUTES"),
          "otel_service": os.environ.get("OTEL_SERVICE_NAME")})
