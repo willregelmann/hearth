@@ -6,6 +6,7 @@ from typing import Callable
 
 from hearth.conversation import Exclusion
 from hearth.home import Config, Home
+from hearth.telemetry import Telemetry
 
 log = logging.getLogger("hearth")
 
@@ -29,3 +30,4 @@ class Context:
     poke: Callable[[], None]
     exclusion: Exclusion = field(default_factory=Exclusion)
     live: dict = field(default_factory=dict)
+    telemetry: Telemetry = field(default_factory=Telemetry)

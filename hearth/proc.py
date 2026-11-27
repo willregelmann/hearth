@@ -106,6 +106,9 @@ async def run(argv: Sequence[str], *, cwd: str, env: Mapping[str, str], timeout:
             *argv, cwd=cwd, env=dict(env), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE, start_new_session=True)
     except OSError as exc:
+        if not os.path.isdir(cwd):
+            return Ran(rc=None, error=f"the working directory {cwd} does not exist, so {os.path.basename(argv[0])} "
+                                      "could not be started there")
         return Ran(rc=None, error=f"could not run {os.path.basename(argv[0])}: {exc.strerror or exc}")
     if on_start is not None:
         on_start(proc.pid)

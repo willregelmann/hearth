@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS wakes (
     finished_at REAL,
     cancel_reason TEXT,
     canceled_by TEXT,
+    traceparent TEXT,
     UNIQUE (agent, source, idem)
 );
 CREATE INDEX IF NOT EXISTS wakes_by_state ON wakes (agent, state, conversation_id);
@@ -75,7 +76,7 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
     have = {r["name"] for r in conn.execute("PRAGMA table_info(wakes)")}
-    for column in ("cancel_reason", "canceled_by"):
+    for column in ("cancel_reason", "canceled_by", "traceparent"):
         if column not in have:
             conn.execute(f"ALTER TABLE wakes ADD COLUMN {column} TEXT")
     return conn

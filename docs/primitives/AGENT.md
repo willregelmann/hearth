@@ -1,6 +1,6 @@
 # Agent
 
-A registered Claude Code agent: a name and a manifest. The manifest is the whole of the agent as Hearth knows it: where its turns work, which Claude Code configuration directory they use, an optional model, extra environment, how long a turn may take, the plugins it loads, and the [checks](../interfaces/CHECKS.md) that poll for it. Everything else the agent is lives in Claude Code, in that configuration directory and working directory.
+A registered Claude Code agent: a name and a manifest. The manifest is the whole of the agent as Hearth knows it: where its turns work, which Claude Code configuration directory they use, an optional model, extra environment, how long a turn may take, the plugins it loads with the options each needs, and the [checks](../interfaces/CHECKS.md) that poll for it. Everything else the agent is lives in Claude Code, in that configuration directory and working directory.
 
 All agents run as the gateway's own OS user. What keeps them apart is configuration, not custody: each has its own configuration directory unless its manifest points somewhere else, and nothing stops one from reading another's files or credentials.
 

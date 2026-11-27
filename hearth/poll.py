@@ -63,7 +63,7 @@ def _record_failure(ctx: Context, agent: str, name: str, error: str) -> None:
     log.error("agent %s: check %s failed: %s", agent, name, error)
 
 
-def _record_success(ctx: Context, agent: str, name: str, lines: list) -> int:
+def _record_success(ctx: Context, agent: str, name: str, lines: list, parent: Optional[str] = None) -> int:
     """Raise a wake for each key that wasn't there last time, and keep this output as the new last."""
     now = ctx.clock()
     raised = 0
@@ -76,8 +76,11 @@ def _record_success(ctx: Context, agent: str, name: str, lines: list) -> int:
                 continue
             seq += 1
             conv = conversation.resolve(ctx.conn, agent, line.conversation)
-            wake.accept(ctx.conn, agent=agent, conversation_id=conv.id, source=name, key=line.key,
-                        idem=f"poll:{line.key}#{seq}", note=line.note, not_before=None, now=now)
+            span = ctx.telemetry.wake(agent=agent, source=name, route="poll", conversation=conv.label, parent=parent)
+            wake_id, duplicate = wake.accept(ctx.conn, agent=agent, conversation_id=conv.id, source=name,
+                                             key=line.key, idem=f"poll:{line.key}#{seq}", note=line.note,
+                                             not_before=None, now=now, traceparent=span.traceparent)
+            span.accepted(wake_id, duplicate)
             raised += 1
         ctx.conn.execute("UPDATE check_state SET keys=?, seq=?, last_run=?, last_ok=1, last_error=NULL "
                          "WHERE agent=? AND name=?", (json.dumps([l.key for l in lines]), seq, now, agent, name))
@@ -85,25 +88,31 @@ def _record_success(ctx: Context, agent: str, name: str, lines: list) -> int:
 
 
 async def run_check(ctx: Context, agent: agents.Agent, check: agents.Check) -> None:
+    started = ctx.clock()
+    span = ctx.telemetry.check(agent=agent.name, check=check.name, started=started)
+    error, raised = await _run(ctx, agent, check, span.traceparent)
+    span.end(error is None, raised, ctx.clock() - started, error)
+
+
+async def _run(ctx: Context, agent: agents.Agent, check: agents.Check, parent: Optional[str]) -> tuple:
+    """Run a check once. Returns (the failure, or None, and how many wakes it raised)."""
     agent.prepare()
     argv = ["/bin/sh", "-c", check.command] if isinstance(check.command, str) else list(check.command)
     ran = await proc.run(argv, cwd=str(agent.workdir), env=agent.environment(ctx.home, turn=False),
                          timeout=check.timeout)
-    if ran.error:
-        _record_failure(ctx, agent.name, check.name, ran.error)
-        return
-    if ran.timed_out:
-        _record_failure(ctx, agent.name, check.name, f"timed out after {check.timeout:g}s")
-        return
-    if ran.rc != 0:
-        _record_failure(ctx, agent.name, check.name, f"exited {ran.rc}")
-        return
-    try:
-        lines = parse(check.name, ran.stdout)
-    except CheckFailed as exc:
-        _record_failure(ctx, agent.name, check.name, str(exc))
-        return
-    raised = _record_success(ctx, agent.name, check.name, lines)
+    error = (ran.error or (f"timed out after {check.timeout:g}s" if ran.timed_out else None)
+             or (f"exited {ran.rc}" if ran.rc != 0 else None))
+    lines = []
+    if error is None:
+        try:
+            lines = parse(check.name, ran.stdout)
+        except CheckFailed as exc:
+            error = str(exc)
+    if error is not None:
+        _record_failure(ctx, agent.name, check.name, error)
+        return error, 0
+    raised = _record_success(ctx, agent.name, check.name, lines, parent)
     if raised:
         log.info("agent %s: check %s raised %d wake%s", agent.name, check.name, raised, "" if raised == 1 else "s")
         ctx.poke()
+    return None, raised

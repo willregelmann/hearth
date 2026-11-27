@@ -176,3 +176,27 @@ def test_install_writes_the_session_hooks_and_keeps_the_rest_of_the_settings(hom
     assert starts[0] == "echo mine" and len(starts) == 2 and "--record-only" in starts[1]
     assert [h["command"] for g in written["hooks"]["SessionEnd"] for h in g["hooks"]][0].endswith(
         "hook session-end --record-only")
+
+
+def test_install_sets_the_options_the_manifest_gives_each_plugin_and_reports_any_it_could_not(home, root, fake):
+    plugin = root / "desk-plugin"
+    (plugin / ".claude-plugin").mkdir(parents=True)
+    (plugin / ".claude-plugin" / "plugin.json").write_text(json.dumps({"name": "desk"}))
+    register(home, "ash", root, lines=[
+        "[[plugin]]", f'dir = "{plugin}"', 'options = {home = "/home/agent/desk", python = "/usr/bin/python3"}',
+        "[[plugin]]", 'id = "other@market"', 'options = {token_file = "/run/secret"}'])
+    fake.refuse_configure("other@market")      # it installs; only its options can't be set
+    done = hearth_cli(home, "agent", "install", "ash", env={"HEARTH_CLAUDE": str(fake.path)})
+    assert done.returncode == 1, "a plugin whose options couldn't be set was not reported as a failure"
+    assert "desk-plugin: options set (home, python)" in done.stdout
+    assert "other@market: options FAILED" in done.stdout
+    settings = json.loads((root / "ash-claude" / "settings.json").read_text())
+    assert settings["pluginConfigs"]["desk@inline"]["options"] == {"home": "/home/agent/desk", "python": "/usr/bin/python3"}
+    assert any("--record-only" in h["command"] for g in settings["hooks"]["SessionStart"] for h in g["hooks"]), \
+        "writing the session hooks lost or skipped"
+
+
+def test_a_plugins_options_must_be_single_line_strings(home, root):
+    import pytest
+    with pytest.raises(agents.ManifestError, match="options"):
+        register(home, "ash", root, lines=["[[plugin]]", 'id = "a@b"', "options = {n = 3}"])

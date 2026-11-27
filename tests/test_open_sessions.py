@@ -142,7 +142,7 @@ async def test_a_session_started_without_hearth_in_the_agents_configuration_dire
                                   if not k.startswith("HEARTH_")},
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
-        await wait_until(lambda: list(home.sessions.glob(f"{session}.*.json")),
+        await wait_until(lambda: list(home.sessions.glob(f"{session}.*.json")) and fake.starts,
                          what="the plain session to be recorded by the configuration directory's hook")
         assert fake.starts[0]["contexts"] == [], "the record-only hook told the session something"
         await push(home, "ash", session, note="while it was open by hand")

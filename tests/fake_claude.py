@@ -39,6 +39,19 @@ def plugin_command(args: list) -> int:
             f.write(json.dumps({"source": args[2], "config": str(config)}) + "\n")
         print(json.dumps({"command": "marketplace-add", "outcome": "ok", "message": f"added {args[2]}"}))
         return 0
+    if args[:1] == ["configure"] and "--values-stdin" in args:
+        refused = (CTRL / "unconfigurable").read_text().split() if (CTRL / "unconfigurable").exists() else []
+        if args[1] in refused:
+            print(f"No installed plugin has the id \"{args[1]}\".", file=sys.stderr)
+            return 1
+        config.mkdir(parents=True, exist_ok=True)
+        path = config / "settings.json"
+        settings = json.loads(path.read_text()) if path.exists() else {}
+        settings.setdefault("pluginConfigs", {}).setdefault(args[1], {}).setdefault("options", {}).update(
+            json.loads(sys.stdin.read()))
+        path.write_text(json.dumps(settings))
+        print("Configuration saved. Restart Claude Code to apply it.")
+        return 0
     if args[:1] == ["install"]:
         refused = (CTRL / "unknown-plugins").read_text().split() if (CTRL / "unknown-plugins").exists() else []
         if args[1] in refused:
@@ -92,6 +105,8 @@ def result(session: str, *, error: bool = False, subtype: str = "success") -> st
 
 
 def main(argv: list) -> int:
+    while argv[:1] == ["--plugin-dir"]:      # options before the subcommand, as Claude Code takes them
+        argv = argv[2:]
     if argv[:1] == ["plugin"]:
         return plugin_command(argv[1:])
     options: dict = {"--plugin-dir": []}
@@ -122,7 +137,9 @@ def main(argv: list) -> int:
          "cwd": os.getcwd(), "model": options.get("--model"), "settings": options.get("--settings"),
          "config_dir": os.environ.get("CLAUDE_CONFIG_DIR"), "plugin_dirs": options["--plugin-dir"],
          "prompt": prompt, "agent": os.environ.get("HEARTH_AGENT"), "turn": os.environ.get("HEARTH_TURN"),
-         "foo": os.environ.get("FOO"), "contexts": contexts, "argv": argv})
+         "foo": os.environ.get("FOO"), "contexts": contexts, "argv": argv,
+         "traceparent": os.environ.get("TRACEPARENT"), "otel_resource": os.environ.get("OTEL_RESOURCE_ATTRIBUTES"),
+         "otel_service": os.environ.get("OTEL_SERVICE_NAME")})
     if mode.get("child"):
         child = subprocess.Popen(["sleep", "60"])
         (CTRL / "child.pid").write_text(str(child.pid))

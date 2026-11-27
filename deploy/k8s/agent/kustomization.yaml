@@ -1,0 +1,12 @@
+# One agent: its own namespace, its own gateway, its own volume. An overlay names the agent, sets the
+# namespace, and supplies the manifest (agent.toml), Hearth's settings (config.toml) and a Secret
+# named hearth-secrets whose keys become the gateway's environment (for example the model's
+# credentials). See deploy/README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - gateway.yaml
+  - networkpolicy.yaml
+labels:
+  - pairs: {app.kubernetes.io/part-of: hearth}
+    includeSelectors: false

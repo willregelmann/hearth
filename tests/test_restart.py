@@ -142,3 +142,9 @@ def test_a_process_start_is_read_without_ps_where_proc_exists(monkeypatch, tmp_p
     started = proc.start_time(os.getpid())
     assert started and started.startswith("proc:")
     assert proc.is_recorded_process(os.getpid(), started)
+
+
+async def test_a_missing_working_directory_is_named_as_the_failure_not_the_program(tmp_path):
+    from hearth import proc
+    ran = await proc.run(["true"], cwd=str(tmp_path / "nowhere"), env={}, timeout=10)
+    assert ran.error and "working directory" in ran.error and "nowhere" in ran.error

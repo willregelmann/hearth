@@ -14,6 +14,7 @@ STATES = (PENDING, RUNNING, DONE, CANCELED)
 SOURCE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 MAX_KEY = 256
 MAX_NOTE = 2000
+TRACEPARENT_RE = re.compile(r"^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
 # Long enough that a source retrying a push can't be mistaken for a new one; the only rows ever dropped.
 FORGET_AFTER_S = 180 * 24 * 3600.0
 
@@ -34,11 +35,12 @@ class Wake:
     created_at: float
     state: str
     attempts: int
+    traceparent: Optional[str] = None
 
 
 def _wake(row: sqlite3.Row) -> Wake:
     return Wake(row["id"], row["agent"], row["conversation_id"], row["source"], row["key"], row["note"],
-                row["not_before"], row["created_at"], row["state"], row["attempts"])
+                row["not_before"], row["created_at"], row["state"], row["attempts"], row["traceparent"])
 
 
 def check_fields(source, key, note) -> None:
@@ -52,16 +54,16 @@ def check_fields(source, key, note) -> None:
 
 
 def accept(conn: sqlite3.Connection, *, agent: str, conversation_id: int, source: str, key: str, idem: str,
-           note: Optional[str], not_before: Optional[float], now: float) -> tuple:
+           note: Optional[str], not_before: Optional[float], now: float, traceparent: Optional[str] = None) -> tuple:
     """Persist a wake. Returns (id, duplicate): a wake from the same source for the same agent with
     the same ``idem`` is the one already accepted, however long ago."""
     row = conn.execute("SELECT id FROM wakes WHERE agent=? AND source=? AND idem=?", (agent, source, idem)).fetchone()
     if row is not None:
         return row["id"], True
     cur = conn.execute(
-        "INSERT INTO wakes(agent, conversation_id, source, key, idem, note, not_before, created_at, state) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        (agent, conversation_id, source, key, idem, note, not_before, now, PENDING))
+        "INSERT INTO wakes(agent, conversation_id, source, key, idem, note, not_before, created_at, state, traceparent) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (agent, conversation_id, source, key, idem, note, not_before, now, PENDING, traceparent))
     return cur.lastrowid, False
 
 
