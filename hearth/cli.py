@@ -184,6 +184,24 @@ def cmd_agent_install(args, home: Home) -> int:
         else:
             failed += 1
             print(f"plugin {plugin.dir}: FAILED: no .claude-plugin/plugin.json there")
+    for plugin in agent.plugins:
+        if not plugin.options:
+            continue
+        config_id = plugin.config_id()
+        if config_id is None:
+            failed += 1
+            print(f"plugin {plugin.label}: options FAILED: its plugin.json has no name to keep them under")
+            continue
+        where = ["--plugin-dir", str(plugin.dir)] if plugin.dir else []
+        done = subprocess.run([claude_path, *where, "plugin", "configure", config_id, "--values-stdin"],
+                              input=json.dumps(dict(plugin.options)), capture_output=True, text=True, env=env,
+                              timeout=120)
+        if done.returncode == 0:
+            print(f"plugin {plugin.label}: options set ({', '.join(k for k, _ in plugin.options)})")
+        else:
+            failed += 1
+            reason = (done.stderr or done.stdout).strip().splitlines()[-1:] or [f"exited {done.returncode}"]
+            print(f"plugin {plugin.label}: options FAILED: {reason[0]}")
     try:
         print(f"session hooks: written to {agents.write_session_hooks(agent, home)}")
     except agents.ManifestError as exc:

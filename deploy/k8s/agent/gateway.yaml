@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hearth
+spec:
+  clusterIP: None          # a StatefulSet needs a governing service; nothing listens on the network
+  selector: {app.kubernetes.io/name: hearth-gateway}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hearth
+spec:
+  serviceName: hearth
+  replicas: 1              # at most one gateway per Hearth home: never scale this
+  podManagementPolicy: OrderedReady
+  updateStrategy: {type: RollingUpdate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: hearth-gateway}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: hearth-gateway}
+    spec:
+      # Longer than Hearth's shutdown_grace_s, so a running turn can finish before the kubelet kills it.
+      terminationGracePeriodSeconds: 60
+      enableServiceLinks: false
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: gateway
+          image: hearth-gateway
+          env:
+            - name: HEARTH_AGENT
+              valueFrom: {configMapKeyRef: {name: hearth-agent, key: name}}
+          envFrom:
+            - secretRef: {name: hearth-secrets, optional: true}
+          volumeMounts:
+            - {name: home, mountPath: /home/agent}
+            - {name: agent, mountPath: /etc/hearth, readOnly: true}
+          startupProbe:
+            exec:
+              command: ["python", "-c", "from hearth import client; from hearth.home import Home; client.request(Home.from_env(), {'op': 'ping'})"]
+            periodSeconds: 2
+            failureThreshold: 60
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "from hearth import client; from hearth.home import Home; client.request(Home.from_env(), {'op': 'ping'})"]
+            timeoutSeconds: 5
+            periodSeconds: 30
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {memory: 4Gi}
+      volumes:
+        - name: agent
+          configMap:
+            name: hearth-agent
+            items:
+              - {key: agent.toml, path: agent.toml}
+              - {key: config.toml, path: config.toml}
+  volumeClaimTemplates:
+    - metadata:
+        name: home
+      spec:
+        # Block storage mounted by one node: Hearth's lock and SQLite need it, and must never be on NFS.
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests: {storage: 10Gi}
